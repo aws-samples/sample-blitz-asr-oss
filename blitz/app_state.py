@@ -129,6 +129,9 @@ class ApplicationState:
             primary_model_name=config.tier3_model,
             language_detection_model=config.language_detection_model,
             device="cuda" if config.device == "cuda" else "cpu",
+            primary_revision=config.tier3_model_revision or None,
+            tiny_model_name=config.whisper_tiny_model_name,
+            tiny_revision=config.whisper_tiny_revision or None,
         )
 
         # Initialize VoxLingua (required for VoxLingua-primary detection)
@@ -174,7 +177,7 @@ class ApplicationState:
         )
 
         # Initialize VAD service (CPU is fast enough for VAD)
-        vad_service = VADService(device="cpu")
+        vad_service = VADService(device="cpu", revision=config.silero_vad_revision)
         print("VAD service initialized (Silero VAD)")
 
         return {

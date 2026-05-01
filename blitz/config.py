@@ -201,6 +201,42 @@ class ServerConfig(BaseSettings):
     )
 
     # ============================================================================
+    # Model Revision Pinning (supply-chain hardening)
+    # ============================================================================
+    # Empty string = fetch latest from hub (convenient for dev).
+    # Set to a commit SHA or tag in production to get reproducible, auditable model loads.
+
+    tier1_model_revision: str = Field(
+        default="",
+        description="HuggingFace revision (commit SHA or tag) for tier1_model. Empty = latest.",
+    )
+
+    tier2_model_revision: str = Field(
+        default="",
+        description="HuggingFace revision for tier2_model (NeMo or ONNX repo). Empty = latest.",
+    )
+
+    tier3_model_revision: str = Field(
+        default="",
+        description="HuggingFace revision for tier3_model (Whisper primary). Empty = latest.",
+    )
+
+    whisper_tiny_revision: str = Field(
+        default="",
+        description="HuggingFace revision for whisper_tiny_model_name. Empty = latest.",
+    )
+
+    voxlingua_revision: str = Field(
+        default="",
+        description="HuggingFace revision for voxlingua_model_name. Empty = latest.",
+    )
+
+    silero_vad_revision: str = Field(
+        default="",
+        description="torch.hub commit SHA for snakers4/silero-vad. Empty = latest on master.",
+    )
+
+    # ============================================================================
     # GPU Instance Configuration
     # ============================================================================
 

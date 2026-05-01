@@ -23,6 +23,9 @@ class WhisperModel:
         primary_model_name: str = "openai/whisper-large-v3-turbo",
         language_detection_model: str = "large-v3-turbo",
         device: Optional[str] = None,
+        primary_revision: Optional[str] = None,
+        tiny_model_name: str = "openai/whisper-tiny",
+        tiny_revision: Optional[str] = None,
     ):
         """
         Initialize Whisper model(s).
@@ -33,6 +36,11 @@ class WhisperModel:
                 - "tiny": Load separate tiny model (faster, less accurate)
                 - "large-v3-turbo": Use primary model (slower, more accurate)
             device: Device to load model on ("cuda" or "cpu"). Auto-detects if None.
+            primary_revision: HuggingFace revision (commit SHA/tag) for the
+                primary model. None or empty = fetch latest.
+            tiny_model_name: HuggingFace repo for the tiny detection model.
+            tiny_revision: HuggingFace revision for the tiny detection model.
+                None or empty = fetch latest.
         """
         self.primary_model_name = primary_model_name
         self.language_detection_model_name = language_detection_model
@@ -43,20 +51,27 @@ class WhisperModel:
         else:
             self.device = device
 
-        # Load primary model (always needed for transcription)
-        self.processor = WhisperProcessor.from_pretrained(primary_model_name)
-        self.model = WhisperForConditionalGeneration.from_pretrained(
-            primary_model_name
+        primary_rev = primary_revision or None
+        tiny_rev = tiny_revision or None
+
+        # Load primary model (always needed for transcription).
+        # Revision is config-driven (TIER3_MODEL_REVISION); see SECURITY.md.
+        self.processor = WhisperProcessor.from_pretrained(  # nosec B615
+            primary_model_name, revision=primary_rev
+        )
+        self.model = WhisperForConditionalGeneration.from_pretrained(  # nosec B615
+            primary_model_name, revision=primary_rev
         ).to(self.device)
         print(f"✅ Whisper {primary_model_name} loaded as primary model")
 
-        # Conditionally load separate tiny model for language detection
+        # Conditionally load separate tiny model for language detection.
+        # Revision is config-driven (WHISPER_TINY_REVISION); see SECURITY.md.
         if language_detection_model == "tiny":
-            self.lang_detect_processor = WhisperProcessor.from_pretrained(
-                "openai/whisper-tiny"
+            self.lang_detect_processor = WhisperProcessor.from_pretrained(  # nosec B615
+                tiny_model_name, revision=tiny_rev
             )
-            self.lang_detect_model = WhisperForConditionalGeneration.from_pretrained(
-                "openai/whisper-tiny"
+            self.lang_detect_model = WhisperForConditionalGeneration.from_pretrained(  # nosec B615
+                tiny_model_name, revision=tiny_rev
             ).to(self.device)
             print("✅ Whisper tiny loaded for language detection")
         else:

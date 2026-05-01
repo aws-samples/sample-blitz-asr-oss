@@ -43,6 +43,8 @@ def create_parakeet_model(
     auto_download: bool = True,
     device: Optional[str] = None,
     local_attention_threshold_sec: float = 1440.0,
+    nemo_revision: Optional[str] = None,
+    onnx_revision: Optional[str] = None,
 ) -> ParakeetModelProtocol:
     """
     Factory function to create a Parakeet ASR model.
@@ -87,6 +89,7 @@ def create_parakeet_model(
             precision=precision,
             device=device,
             local_attention_threshold_sec=local_attention_threshold_sec,
+            revision=nemo_revision,
         )
     elif backend == "onnx":
         return _create_onnx_model(
@@ -94,6 +97,7 @@ def create_parakeet_model(
             precision=precision,
             device=device,
             auto_download=auto_download,
+            revision=onnx_revision,
         )
     else:
         raise ValueError(f"Unknown backend: {backend}. Must be 'nemo' or 'onnx'")
@@ -104,6 +108,7 @@ def _create_nemo_model(
     precision: str,
     device: Optional[str],
     local_attention_threshold_sec: float,
+    revision: Optional[str] = None,
 ) -> ParakeetModelProtocol:
     """Create NeMo-based Parakeet model."""
     from blitz.models.parakeet import ParakeetModel
@@ -115,6 +120,7 @@ def _create_nemo_model(
         model_name=model_name,
         device=device,
         local_attention_threshold_sec=local_attention_threshold_sec,
+        revision=revision,
     )
 
     # Apply precision conversion
@@ -140,7 +146,11 @@ def _create_nemo_model(
 
 
 def _create_onnx_model(
-    model_path: str, precision: str, device: Optional[str], auto_download: bool
+    model_path: str,
+    precision: str,
+    device: Optional[str],
+    auto_download: bool,
+    revision: Optional[str] = None,
 ) -> ParakeetModelProtocol:
     """Create ONNX-based Parakeet model."""
     from blitz.models.parakeet_onnx import ParakeetONNXModel, ONNX_ASR_AVAILABLE
@@ -166,6 +176,7 @@ def _create_onnx_model(
         quantization=quantization,
         device=device,
         auto_download=auto_download,
+        revision=revision,
     )
 
 
@@ -189,6 +200,8 @@ def create_tier2_model_from_config(config) -> ParakeetModelProtocol:
         auto_download=config.tier2_auto_download,
         device=config.device,
         local_attention_threshold_sec=config.local_attention_threshold_sec,
+        nemo_revision=config.tier2_model_revision or None,
+        onnx_revision=config.tier2_model_revision or None,
     )
 
 
@@ -197,6 +210,7 @@ def create_parakeet_ctc_model(
     model_name: str = "nvidia/parakeet-tdt_ctc-110m",
     device: Optional[str] = None,
     local_attention_threshold_sec: float = 1440.0,
+    revision: Optional[str] = None,
 ) -> ParakeetModelProtocol:
     """
     Create fast English-only Parakeet CTC model.
@@ -227,6 +241,7 @@ def create_parakeet_ctc_model(
         precision=precision,
         device=device,
         local_attention_threshold_sec=local_attention_threshold_sec,
+        revision=revision,
     )
 
 
@@ -247,4 +262,5 @@ def create_tier1_model_from_config(config) -> ParakeetModelProtocol:
         model_name=config.tier1_model,
         device=config.device,
         local_attention_threshold_sec=config.local_attention_threshold_sec,
+        revision=config.tier1_model_revision or None,
     )

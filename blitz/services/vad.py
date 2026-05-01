@@ -20,16 +20,20 @@ class VADService:
     before expensive language detection and transcription.
     """
 
-    def __init__(self, device: str = "cpu"):
+    def __init__(self, device: str = "cpu", revision: str = ""):
         """
         Initialize VAD service.
 
         Args:
             device: Device to run VAD on ("cpu" or "cuda")
                    Default "cpu" - VAD is fast enough on CPU
+            revision: torch.hub commit SHA for snakers4/silero-vad. Empty string
+                means latest on master. Pin this in production for reproducible,
+                auditable loads.
         """
         self.device = device
         self.sample_rate = 16000
+        self.revision = revision.strip() or None
         self._model = None
         self._utils = None
 
@@ -39,10 +43,13 @@ class VADService:
             print("🔧 Loading Silero VAD model...")
             from torch.hub import load as torch_hub_load
 
-            self._model, self._utils = torch_hub_load(
+            # Revision is config-driven (SILERO_VAD_REVISION); see SECURITY.md.
+            hub_kwargs = {"revision": self.revision} if self.revision else {}
+            self._model, self._utils = torch_hub_load(  # nosec B614
                 repo_or_dir="snakers4/silero-vad",
                 model="silero_vad",
                 force_reload=False,
+                **hub_kwargs,
             )
             self._model = self._model.to(self.device)
             print(f"✅ Silero VAD loaded on {self.device}")
@@ -96,7 +103,8 @@ class VADService:
         total_duration_sec = len(audio) / self.sample_rate
 
         # Get speech timestamps from Silero VAD
-        assert self._utils is not None, "_load_model() must be called first"
+        if self._utils is None:
+            raise RuntimeError("_load_model() must be called first")
         get_speech_timestamps = self._utils[0]
 
         with torch.no_grad():
@@ -216,7 +224,8 @@ class VADService:
         if sample_rate != self.sample_rate:
             audio = self._resample(audio, sample_rate, self.sample_rate)
 
-        assert self._utils is not None, "_load_model() must be called first"
+        if self._utils is None:
+            raise RuntimeError("_load_model() must be called first")
         get_speech_timestamps = self._utils[0]
 
         with torch.no_grad():

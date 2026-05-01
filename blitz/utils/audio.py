@@ -4,6 +4,7 @@ Audio processing utilities for Blitz transcription service.
 Functions for audio loading, resampling, chunking, and duration calculation.
 """
 
+import logging
 import os
 import tempfile
 import uuid
@@ -13,6 +14,8 @@ import numpy as np
 import soundfile as sf
 import torch
 import torchaudio
+
+logger = logging.getLogger(__name__)
 
 
 def get_audio_duration(audio: Union[np.ndarray, torch.Tensor], sr: int) -> float:
@@ -106,9 +109,8 @@ def cleanup_temp_file(path: str) -> None:
     try:
         if path and os.path.exists(path):
             os.remove(path)
-    except Exception:
-        # Ignore cleanup errors - file might already be deleted
-        pass
+    except OSError as exc:
+        logger.debug("cleanup_temp_file(%s) ignored: %s", path, exc)
 
 
 def chunk_audio(

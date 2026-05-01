@@ -147,7 +147,8 @@ class LanguageDetectionService:
             Tuple of (language, confidence, top_languages, time_ms)
         """
         start = time.time()
-        assert self.voxlingua_model is not None, "VoxLingua model not available"
+        if self.voxlingua_model is None:
+            raise RuntimeError("VoxLingua model not available")
         language, confidence, top_languages = self.voxlingua_model.detect_language(
             audio, sample_rate
         )

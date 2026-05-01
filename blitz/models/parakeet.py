@@ -7,11 +7,14 @@ Provides interface for NVIDIA Parakeet TDT 0.6B model with:
 - Memory-efficient processing
 """
 
+import logging
 from typing import Dict, Optional, Tuple, Union
 import torch
 import numpy as np
 import nemo.collections.asr as nemo_asr
 from omegaconf import open_dict
+
+logger = logging.getLogger(__name__)
 
 
 class ParakeetModel:
@@ -22,6 +25,7 @@ class ParakeetModel:
         model_name: str = "nvidia/parakeet-tdt-0.6b-v3",
         device: Optional[str] = None,
         local_attention_threshold_sec: float = 1440.0,  # 24 minutes
+        revision: Optional[str] = None,
     ):
         """
         Initialize Parakeet model.
@@ -30,6 +34,8 @@ class ParakeetModel:
             model_name: HuggingFace model identifier
             device: Device to load model on ("cuda" or "cpu"). Auto-detects if None.
             local_attention_threshold_sec: Switch to local attention after this duration
+            revision: HuggingFace revision (commit SHA/tag) to pin the model
+                to a specific snapshot. None or empty = latest on default branch.
         """
         self.model_name = model_name
         self.local_attention_threshold_sec = local_attention_threshold_sec
@@ -42,7 +48,11 @@ class ParakeetModel:
             self.device = device
 
         # Load model
-        self.model = nemo_asr.models.ASRModel.from_pretrained(model_name)
+        # NeMo's ASRModel.from_pretrained forwards revision to HuggingFace Hub.
+        load_kwargs = {"revision": revision} if revision else {}
+        self.model = nemo_asr.models.ASRModel.from_pretrained(
+            model_name, **load_kwargs
+        )
         if self.device == "cuda":
             self.model = self.model.to("cuda")
 
@@ -91,9 +101,11 @@ class ParakeetModel:
             else:
                 # Switch back to full attention for short audio
                 self.model.change_attention_model(self_attention_model="rel_pos")
-        except Exception:
-            # Not all model variants support attention switching
-            pass
+        except (AttributeError, NotImplementedError, ValueError) as exc:
+            # Not all model variants support attention switching; expected on CTC.
+            logger.debug(
+                "set_attention_mode skipped for %s: %s", self.model_name, exc
+            )
 
     def transcribe(
         self,

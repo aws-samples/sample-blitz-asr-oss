@@ -419,10 +419,12 @@ def _transcribe_with_parakeet(
     # Select model based on tier
     if use_tier1:
         model = state.tier1_model
-        assert model is not None, "Tier 1 model requested but not loaded"
+        if model is None:
+            raise RuntimeError("Tier 1 model requested but not loaded")
     else:
         model = state.tier2_model
-        assert model is not None, "Tier 2 model not loaded"
+        if model is None:
+            raise RuntimeError("Tier 2 model not loaded")
 
     # Resample to 16kHz if needed
     if sample_rate != 16000:
@@ -495,8 +497,10 @@ def _transcribe_with_whisper(
     """Transcribe using Whisper model."""
     import torch
 
-    # Caller must validate whisper_model is not None
-    assert state.whisper_model is not None
+    if state.whisper_model is None:
+        raise RuntimeError(
+            "Whisper model not loaded (tier 3). Caller must validate before invoking."
+        )
 
     # Resample to 16kHz if needed
     if sample_rate != 16000:

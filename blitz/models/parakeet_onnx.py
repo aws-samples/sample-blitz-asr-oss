@@ -48,6 +48,7 @@ class ParakeetONNXModel:
         quantization: Optional[str] = "fp16",
         device: Optional[str] = None,
         auto_download: bool = True,
+        revision: Optional[str] = None,
     ):
         """
         Initialize ONNX-based Parakeet model.
@@ -57,6 +58,8 @@ class ParakeetONNXModel:
             quantization: "fp16" for half-precision or None for FP32
             device: Device to use ("cuda" or "cpu"). Auto-detects if None.
             auto_download: If True, download models from HuggingFace if missing
+            revision: HuggingFace revision (commit SHA/tag) to pin downloads
+                to a specific snapshot. None or empty = latest on default branch.
         """
         if not ONNX_ASR_AVAILABLE:
             raise ImportError(
@@ -66,6 +69,7 @@ class ParakeetONNXModel:
 
         self.model_path = Path(model_path)
         self.quantization = quantization
+        self.revision = revision or None
 
         # Determine device
         if device is None:
@@ -182,17 +186,24 @@ class ParakeetONNXModel:
         fp32_repo = "istupakov/parakeet-tdt-0.6b-v3-onnx"
         support_files = ["config.json", "vocab.txt", "nemo128.onnx"]
 
+        # Revision is config-driven (TIER2_MODEL_REVISION); see SECURITY.md.
         try:
             for filename in fp16_files:
                 logger.info(f"  Downloading {filename}...")
-                hf_hub_download(
-                    repo_id=fp16_repo, filename=filename, local_dir=str(self.model_path)
+                hf_hub_download(  # nosec B615
+                    repo_id=fp16_repo,
+                    filename=filename,
+                    local_dir=str(self.model_path),
+                    revision=self.revision,
                 )
 
             for filename in support_files:
                 logger.info(f"  Downloading {filename}...")
-                hf_hub_download(
-                    repo_id=fp32_repo, filename=filename, local_dir=str(self.model_path)
+                hf_hub_download(  # nosec B615
+                    repo_id=fp32_repo,
+                    filename=filename,
+                    local_dir=str(self.model_path),
+                    revision=self.revision,
                 )
 
             logger.info("✅ Model download complete!")
