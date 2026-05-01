@@ -1,0 +1,59 @@
+# Zip files
+*.zip
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+*.egg-info/
+dist/
+build/
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Model cache (only at repository root, not source code)
+.cache/
+/models/
+
+# Temp files
+*.tmp
+*.log
+
+# Virtual environment
+.venv/
+
+# Generated output
+generated-diagrams/
+batch-results/
+
+# Environment files (keep .env.example)
+.env
+!.env.example
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Test audio files (all subdirectories)
+tests/fixtures/**/*.wav
+tests/fixtures/**/*.mp3
+tests/fixtures/**/*.flac
+tests/fixtures/**/*.m4a
+tests/fixtures/**/*.ogg
+tests/fixtures/**/*.opus

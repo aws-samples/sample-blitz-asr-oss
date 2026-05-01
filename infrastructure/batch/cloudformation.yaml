@@ -1,0 +1,465 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Blitz ASR - AWS Batch Infrastructure for S3-triggered transcription'
+
+# ============================================================================
+# Parameters
+# ============================================================================
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+    Description: Environment name
+
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC for Batch compute environment
+
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Subnets for Batch compute environment (private subnets recommended)
+
+  ECRImageUri:
+    Type: String
+    Description: Full ECR image URI (e.g., 123456789012.dkr.ecr.us-east-1.amazonaws.com/blitz-batch:latest)
+
+  MaxvCpus:
+    Type: Number
+    Default: 32
+    Description: Maximum vCPUs for the compute environment
+
+  InstanceTypes:
+    Type: CommaDelimitedList
+    Default: "g6.xlarge"
+    Description: GPU instance types for Batch (L4)
+
+  SpotBidPercentage:
+    Type: Number
+    Default: 0
+    MinValue: 0
+    MaxValue: 100
+    Description: Maximum Spot price as percentage of On-Demand (0 = On-Demand only)
+
+  Tier2Backend:
+    Type: String
+    Default: nemo
+    AllowedValues: [nemo, onnx]
+    Description: Tier 2 (Parakeet 0.6B) backend (nemo = PyTorch, onnx = ONNX Runtime)
+
+  Tier2Precision:
+    Type: String
+    Default: bfloat16
+    AllowedValues: [fp32, bfloat16, fp16]
+    Description: Tier 2 model precision (bfloat16 recommended, fp16 for ONNX)
+
+# ============================================================================
+# Resources
+# ============================================================================
+Resources:
+
+  # --------------------------------------------------------------------------
+  # S3 Buckets
+  # --------------------------------------------------------------------------
+  InputBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'blitz-input-${Environment}-${AWS::AccountId}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      NotificationConfiguration:
+        EventBridgeConfiguration:
+          EventBridgeEnabled: true
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: blitz-asr
+
+  OutputBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'blitz-output-${Environment}-${AWS::AccountId}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldTranscripts
+            Status: Enabled
+            ExpirationInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: blitz-asr
+
+  # --------------------------------------------------------------------------
+  # IAM Roles
+  # --------------------------------------------------------------------------
+  BatchServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'blitz-batch-service-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: batch.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSBatchServiceRole
+
+  BatchInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'blitz-batch-instance-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+
+  BatchInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: !Sub 'blitz-batch-instance-profile-${Environment}'
+      Roles:
+        - !Ref BatchInstanceRole
+
+  BatchJobRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'blitz-batch-job-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: S3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                Resource:
+                  - !Sub '${InputBucket.Arn}/*'
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                Resource:
+                  - !Sub '${OutputBucket.Arn}/*'
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                Resource:
+                  - !GetAtt InputBucket.Arn
+                  - !GetAtt OutputBucket.Arn
+        - PolicyName: CloudWatchLogs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/batch/blitz-*'
+
+  BatchExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'blitz-batch-execution-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: ECRAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecr:GetAuthorizationToken
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                Resource: '*'
+
+  EventBridgeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'blitz-eventbridge-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: SubmitBatchJob
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - batch:SubmitJob
+                Resource:
+                  - !Ref BatchJobDefinition
+                  - !Ref BatchJobQueue
+
+  # --------------------------------------------------------------------------
+  # Security Group
+  # --------------------------------------------------------------------------
+  BatchSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub 'blitz-batch-sg-${Environment}'
+      GroupDescription: Security group for Blitz Batch compute instances
+      VpcId: !Ref VpcId
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic
+      Tags:
+        - Key: Name
+          Value: !Sub 'blitz-batch-sg-${Environment}'
+
+  # --------------------------------------------------------------------------
+  # CloudWatch Log Group
+  # --------------------------------------------------------------------------
+  BatchLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/batch/blitz-${Environment}'
+      RetentionInDays: 30
+
+  # --------------------------------------------------------------------------
+  # Launch Template for GPU instances with 100GB disk
+  # --------------------------------------------------------------------------
+  BatchLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: !Sub 'blitz-batch-gpu-${Environment}'
+      LaunchTemplateData:
+        BlockDeviceMappings:
+          - DeviceName: /dev/xvda
+            Ebs:
+              VolumeSize: 100
+              VolumeType: gp3
+              DeleteOnTermination: true
+
+  # --------------------------------------------------------------------------
+  # AWS Batch Resources
+  # --------------------------------------------------------------------------
+  BatchComputeEnvironment:
+    Type: AWS::Batch::ComputeEnvironment
+    DependsOn: BatchLaunchTemplate
+    Properties:
+      ComputeEnvironmentName: !Sub 'blitz-gpu-${Environment}'
+      Type: MANAGED
+      State: ENABLED
+      ComputeResources:
+        Type: !If [UseSpot, SPOT, EC2]
+        AllocationStrategy: !If [UseSpot, SPOT_CAPACITY_OPTIMIZED, BEST_FIT_PROGRESSIVE]
+        SpotIamFleetRole: !If [UseSpot, !Sub 'arn:aws:iam::${AWS::AccountId}:role/aws-ec2-spot-fleet-tagging-role', !Ref 'AWS::NoValue']
+        BidPercentage: !If [UseSpot, !Ref SpotBidPercentage, !Ref 'AWS::NoValue']
+        MinvCpus: 0
+        MaxvCpus: !Ref MaxvCpus
+        DesiredvCpus: 0
+        InstanceTypes: !Ref InstanceTypes
+        InstanceRole: !GetAtt BatchInstanceProfile.Arn
+        LaunchTemplate:
+          LaunchTemplateId: !Ref BatchLaunchTemplate
+          Version: !GetAtt BatchLaunchTemplate.LatestVersionNumber
+        SecurityGroupIds:
+          - !Ref BatchSecurityGroup
+        Subnets: !Ref SubnetIds
+        Tags:
+          Environment: !Ref Environment
+          Project: blitz-asr
+
+  BatchJobQueue:
+    Type: AWS::Batch::JobQueue
+    Properties:
+      JobQueueName: !Sub 'blitz-transcription-${Environment}'
+      State: ENABLED
+      Priority: 1
+      ComputeEnvironmentOrder:
+        - Order: 1
+          ComputeEnvironment: !Ref BatchComputeEnvironment
+
+  BatchJobDefinition:
+    Type: AWS::Batch::JobDefinition
+    Properties:
+      JobDefinitionName: !Sub 'blitz-transcribe-${Environment}'
+      Type: container
+      PlatformCapabilities:
+        - EC2
+      RetryStrategy:
+        Attempts: 2
+        EvaluateOnExit:
+          - Action: RETRY
+            OnStatusReason: 'Host EC2*'
+          - Action: EXIT
+            OnReason: '*'
+      Timeout:
+        AttemptDurationSeconds: 3600  # 1 hour max per job
+      ContainerProperties:
+        Image: !Ref ECRImageUri
+        JobRoleArn: !GetAtt BatchJobRole.Arn
+        ExecutionRoleArn: !GetAtt BatchExecutionRole.Arn
+        Command:
+          - '--input-bucket'
+          - 'Ref::input-bucket'
+          - '--input-key'
+          - 'Ref::input-key'
+        ResourceRequirements:
+          - Type: VCPU
+            Value: '4'
+          - Type: MEMORY
+            Value: '15360'  # 15GB (leaving room for ECS agent)
+          - Type: GPU
+            Value: '1'
+        LogConfiguration:
+          LogDriver: awslogs
+          Options:
+            awslogs-group: !Ref BatchLogGroup
+            awslogs-region: !Ref AWS::Region
+            awslogs-stream-prefix: blitz
+        Environment:
+          - Name: OUTPUT_BUCKET_NAME
+            Value: !Ref OutputBucket
+          - Name: OUTPUT_PREFIX
+            Value: transcripts/
+          - Name: TIER2_BACKEND
+            Value: !Ref Tier2Backend
+          - Name: TIER2_PRECISION
+            Value: !Ref Tier2Precision
+          - Name: SKIP_SILENCE
+            Value: 'true'
+          - Name: INCLUDE_TIMESTAMPS
+            Value: 'true'
+          - Name: INCLUDE_METRICS
+            Value: 'true'
+          - Name: AWS_REGION
+            Value: !Ref AWS::Region
+        LinuxParameters:
+          SharedMemorySize: 4096  # 4GB shared memory for GPU
+
+  # --------------------------------------------------------------------------
+  # EventBridge Rule for S3 Triggers
+  # --------------------------------------------------------------------------
+  S3TriggerRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub 'blitz-s3-trigger-${Environment}'
+      Description: Trigger Blitz transcription on S3 audio upload
+      State: ENABLED
+      EventPattern:
+        source:
+          - aws.s3
+        detail-type:
+          - Object Created
+        detail:
+          bucket:
+            name:
+              - !Ref InputBucket
+          object:
+            key:
+              - suffix: .mp3
+              - suffix: .wav
+              - suffix: .m4a
+              - suffix: .flac
+              - suffix: .ogg
+              - suffix: .webm
+              - suffix: .MP3
+              - suffix: .WAV
+              - suffix: .M4A
+              - suffix: .FLAC
+      Targets:
+        - Id: BlitzBatchJob
+          Arn: !Ref BatchJobQueue
+          RoleArn: !GetAtt EventBridgeRole.Arn
+          BatchParameters:
+            JobDefinition: !Ref BatchJobDefinition
+            JobName: blitz-transcribe
+          InputTransformer:
+            InputPathsMap:
+              bucket: $.detail.bucket.name
+              key: $.detail.object.key
+            InputTemplate: |
+              {
+                "Parameters": {
+                  "input-bucket": "<bucket>",
+                  "input-key": "<key>"
+                }
+              }
+
+# ============================================================================
+# Conditions
+# ============================================================================
+Conditions:
+  UseSpot: !Not [!Equals [!Ref SpotBidPercentage, 0]]
+
+# ============================================================================
+# Outputs
+# ============================================================================
+Outputs:
+  InputBucketName:
+    Description: S3 bucket for audio input
+    Value: !Ref InputBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-InputBucket'
+
+  OutputBucketName:
+    Description: S3 bucket for transcription output
+    Value: !Ref OutputBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-OutputBucket'
+
+  JobQueueArn:
+    Description: ARN of the Batch job queue
+    Value: !Ref BatchJobQueue
+    Export:
+      Name: !Sub '${AWS::StackName}-JobQueue'
+
+  JobDefinitionArn:
+    Description: ARN of the Batch job definition
+    Value: !Ref BatchJobDefinition
+    Export:
+      Name: !Sub '${AWS::StackName}-JobDefinition'
+
+  LogGroupName:
+    Description: CloudWatch log group for batch jobs
+    Value: !Ref BatchLogGroup
+    Export:
+      Name: !Sub '${AWS::StackName}-LogGroup'
+
+  UsageInstructions:
+    Description: How to use the batch transcription service
+    Value: !Sub |
+      Upload audio files to s3://${InputBucket}/
+      Transcripts will appear in s3://${OutputBucket}/transcripts/
+      Monitor jobs at https://${AWS::Region}.console.aws.amazon.com/batch/
+      View logs at https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?#logsV2:log-groups/log-group/$252Faws$252Fbatch$252Fblitz-${Environment}

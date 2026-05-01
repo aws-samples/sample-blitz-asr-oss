@@ -1,0 +1,17 @@
+# ONNX Runtime dependencies for FP16 Parakeet models
+# Install with: pip install -r requirements-onnx.txt
+#
+# Provides:
+# - 50% smaller model size (1.25GB vs 2.4GB)
+# - Faster inference on supported GPUs
+# - FP16 quantized models
+
+# ONNX ASR library for loading Parakeet ONNX models
+onnx-asr>=0.1.0
+
+# ONNX Runtime with GPU support (CUDA)
+# Use onnxruntime for CPU-only
+onnxruntime-gpu>=1.16.0
+
+# HuggingFace Hub for model downloads
+huggingface-hub>=0.19.0

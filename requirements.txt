@@ -1,0 +1,32 @@
+# Core Web Framework
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+
+# Audio Processing
+numpy>=1.24.0
+soundfile>=0.12.1
+torch>=2.0.0
+torchaudio>=2.0.0
+
+# ASR Models
+transformers>=4.35.0
+nemo_toolkit[asr]>=2.0.0
+speechbrain>=1.0.0
+
+# Configuration & Data Validation
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+omegaconf>=2.3.0
+
+# Testing & Load Testing
+aiohttp>=3.9.0
+
+# Optional: ONNX Runtime for FP16 Parakeet models
+# Provides 50% smaller models and faster inference
+# Install with: pip install onnx-asr onnxruntime-gpu
+# onnx-asr>=0.1.0
+# onnxruntime-gpu>=1.16.0
+
+# Optional: Accelerated inference
+# accelerate>=0.25.0
+# bitsandbytes>=0.41.0

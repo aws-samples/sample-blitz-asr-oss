@@ -1,0 +1,205 @@
+# ============================================================================
+# Blitz ASR - AWS Batch Processing Container
+# ============================================================================
+# Optimized for AWS Batch event-driven transcription from S3 uploads.
+#
+# Usage:
+#   docker build -f docker/Dockerfile.batch -t blitz-batch .
+#   docker build -f docker/Dockerfile.batch --build-arg ENABLE_ONNX=true -t blitz-batch-onnx .
+#
+# AWS Batch Entry Point:
+#   python3 -m blitz.batch.transcribe_job --input-bucket BUCKET --input-key KEY
+
+FROM nvcr.io/nvidia/pytorch:24.02-py3
+
+# Build argument to enable ONNX backend (optional)
+ARG ENABLE_ONNX=false
+
+# Build argument to skip model pre-download (required for Apple Silicon cross-compilation)
+# Models will be downloaded at runtime on first job instead
+ARG SKIP_MODEL_CACHE=false
+
+# ============================================================================
+# System Dependencies
+# ============================================================================
+
+RUN apt-get update && apt-get install -y \
+    ffmpeg \
+    sox \
+    libsndfile1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# ============================================================================
+# Python Dependencies
+# ============================================================================
+
+# Pin ruamel.yaml to avoid 'max_depth' AttributeError with speechbrain/hyperpyyaml
+RUN pip install --no-cache-dir "ruamel.yaml>=0.17.0,<0.18.0"
+
+# Core ASR dependencies
+# Note: fastapi is required because app_state.py imports it for typing
+RUN pip install --no-cache-dir \
+    nemo_toolkit[asr]==2.4.0 \
+    soundfile \
+    pydantic \
+    pydantic-settings \
+    faster-whisper \
+    "transformers[torch]" \
+    sentencepiece \
+    torchaudio \
+    torchmetrics \
+    fastapi \
+    git+https://github.com/speechbrain/speechbrain.git@develop
+
+# AWS SDK for S3 operations
+RUN pip install --no-cache-dir boto3
+
+# Disable Flash Attention for better compatibility across GPU types
+RUN pip uninstall -y flash-attn flash_attn || true
+ENV HF_USE_FLASH_ATTENTION=0
+
+# Remove image/vision-related extras that break in this PyTorch build
+RUN pip uninstall -y torchvision || true
+
+# Upgrade cuda-python for NeMo CUDA graphs support
+RUN /usr/bin/python3 -m pip install --no-cache-dir "cuda-python>=12.3.0"
+
+# ============================================================================
+# 3-Tier Model Routing Configuration
+# ============================================================================
+
+# Tier 1: Fastest (CTC-110M) - default: English only
+ENV TIER1_MODEL=nvidia/parakeet-tdt_ctc-110m
+ENV TIER1_PRECISION=fp16
+ENV TIER1_LANGUAGES=en
+
+# Tier 2: Fast Multilingual (Parakeet 0.6B) - default: 24 EU languages
+ENV TIER2_MODEL=nvidia/parakeet-tdt-0.6b-v3
+ENV TIER2_LANGUAGES=bg,hr,cs,da,nl,et,fi,fr,de,el,hu,it,lv,lt,mt,pl,pt,ro,sk,sl,es,sv,ru,uk
+
+# Tier 3: Catch-all (Whisper) - handles all other languages
+ENV TIER3_MODEL=openai/whisper-large-v3-turbo
+
+# ============================================================================
+# Processing Thresholds
+# ============================================================================
+
+ENV SHORT_AUDIO_THRESHOLD_SEC=300
+ENV LOCAL_ATTENTION_THRESHOLD_SEC=1440
+
+# ============================================================================
+# Language Detection Configuration
+# ============================================================================
+
+ENV LANGUAGE_DETECTION_MODEL=large-v3-turbo
+ENV PRIMARY_LANGUAGE_DETECTOR=whisper
+ENV SECONDARY_LANGUAGE_DETECTOR=voxlingua
+ENV VOXLINGUA_CONFIDENCE_THRESHOLD=0.90
+ENV WHISPER_CONFIDENCE_THRESHOLD=0.70
+ENV MIN_LANGUAGE_CONFIDENCE=0.70
+
+# ============================================================================
+# PyTorch CUDA Memory Configuration
+# ============================================================================
+
+ENV PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+
+# ============================================================================
+# Tier 2 Backend Configuration (Parakeet 0.6B)
+# ============================================================================
+
+ENV TIER2_BACKEND=nemo
+ENV TIER2_PRECISION=bfloat16
+ENV TIER2_ONNX_MODEL_PATH=/app/models/parakeet
+ENV TIER2_AUTO_DOWNLOAD=true
+
+# ============================================================================
+# Batch Mode Configuration
+# ============================================================================
+
+# Running in batch mode (disables async queues)
+ENV BATCH_MODE=true
+
+# ============================================================================
+# Model Pre-download (skip for Apple Silicon cross-compilation)
+# ============================================================================
+# Note: When SKIP_MODEL_CACHE=true, models are downloaded at runtime on first job.
+# This adds ~5-10 min to first job but is required for Apple Silicon builds.
+
+# Cache Parakeet 0.6B model (25 European languages)
+RUN if [ "$SKIP_MODEL_CACHE" != "true" ]; then \
+    python3 -c "from nemo.collections.asr.models import ASRModel; ASRModel.from_pretrained('nvidia/parakeet-tdt-0.6b-v3')" && \
+    echo "✅ Parakeet 0.6B model cached"; \
+    else echo "⏭️  Skipping Parakeet 0.6B model cache (will download at runtime)"; fi
+
+# Cache Parakeet CTC-110M model (English-only, fast mode)
+RUN if [ "$SKIP_MODEL_CACHE" != "true" ]; then \
+    python3 -c "from nemo.collections.asr.models import ASRModel; ASRModel.from_pretrained('nvidia/parakeet-tdt_ctc-110m')" && \
+    echo "✅ Parakeet CTC-110M model cached (English fast mode)"; \
+    else echo "⏭️  Skipping Parakeet CTC-110M model cache (will download at runtime)"; fi
+
+# Cache Whisper tiny (for language detection if configured)
+RUN if [ "$SKIP_MODEL_CACHE" != "true" ]; then \
+    python3 -c "from transformers import WhisperProcessor, WhisperForConditionalGeneration; \
+    WhisperProcessor.from_pretrained('openai/whisper-tiny'); \
+    WhisperForConditionalGeneration.from_pretrained('openai/whisper-tiny')" && \
+    echo "✅ Whisper tiny cached"; \
+    else echo "⏭️  Skipping Whisper tiny cache"; fi
+
+# Cache Whisper large-v3-turbo (main transcription model)
+RUN if [ "$SKIP_MODEL_CACHE" != "true" ]; then \
+    python3 -c "from transformers import WhisperProcessor, WhisperForConditionalGeneration; \
+    WhisperProcessor.from_pretrained('openai/whisper-large-v3-turbo'); \
+    WhisperForConditionalGeneration.from_pretrained('openai/whisper-large-v3-turbo')" && \
+    echo "✅ Whisper large-v3-turbo cached"; \
+    else echo "⏭️  Skipping Whisper large-v3-turbo cache"; fi
+
+# Cache VoxLingua107 model (fallback language detection)
+RUN if [ "$SKIP_MODEL_CACHE" != "true" ]; then \
+    python3 -c "from speechbrain.inference.classifiers import EncoderClassifier; \
+    EncoderClassifier.from_hparams(source='speechbrain/lang-id-voxlingua107-ecapa', savedir='tmp/voxlingua')" && \
+    echo "✅ VoxLingua107 cached"; \
+    else echo "⏭️  Skipping VoxLingua107 cache"; fi
+
+# Cache Silero VAD model
+RUN if [ "$SKIP_MODEL_CACHE" != "true" ]; then \
+    python3 -c "import torch; torch.hub.load(repo_or_dir='snakers4/silero-vad', model='silero_vad', force_reload=False)" && \
+    echo "✅ Silero VAD cached"; \
+    else echo "⏭️  Skipping Silero VAD cache"; fi
+
+# ============================================================================
+# Optional: ONNX Runtime for FP16 Parakeet
+# ============================================================================
+
+RUN if [ "$ENABLE_ONNX" = "true" ]; then \
+    pip install --no-cache-dir onnx-asr onnxruntime-gpu huggingface-hub && \
+    echo "✅ ONNX Runtime installed"; \
+    fi
+
+RUN if [ "$ENABLE_ONNX" = "true" ]; then \
+    mkdir -p /app/models/parakeet && \
+    python3 -c "from huggingface_hub import hf_hub_download; \
+hf_hub_download('grikdotnet/parakeet-tdt-0.6b-fp16', 'encoder-model.fp16.onnx', local_dir='/app/models/parakeet'); \
+hf_hub_download('grikdotnet/parakeet-tdt-0.6b-fp16', 'decoder_joint-model.fp16.onnx', local_dir='/app/models/parakeet'); \
+hf_hub_download('istupakov/parakeet-tdt-0.6b-v3-onnx', 'config.json', local_dir='/app/models/parakeet'); \
+hf_hub_download('istupakov/parakeet-tdt-0.6b-v3-onnx', 'vocab.txt', local_dir='/app/models/parakeet'); \
+hf_hub_download('istupakov/parakeet-tdt-0.6b-v3-onnx', 'nemo128.onnx', local_dir='/app/models/parakeet')" && \
+    echo "✅ FP16 ONNX models downloaded"; \
+    fi
+
+# ============================================================================
+# Application Code
+# ============================================================================
+
+WORKDIR /app
+
+# Copy modular architecture (includes banner.py)
+COPY blitz/ /app/blitz/
+
+# ============================================================================
+# Entry Point for AWS Batch
+# ============================================================================
+# AWS Batch passes --input-bucket and --input-key as job parameters
+# Environment variables: OUTPUT_BUCKET_NAME, OUTPUT_PREFIX, etc.
+
+ENTRYPOINT ["python3", "-m", "blitz.batch.transcribe_job"]

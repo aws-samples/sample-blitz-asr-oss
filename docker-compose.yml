@@ -1,0 +1,76 @@
+# =============================================================================
+# Blitz ASR - Docker Compose for g6.xlarge (NVIDIA L4 24GB)
+# =============================================================================
+#
+# One-command setup for GPU-accelerated speech-to-text.
+#
+# Usage:
+#   # First run (builds image, downloads models - ~15-20 min)
+#   docker compose up -d --build
+#
+#   # Subsequent runs
+#   docker compose up -d
+#
+#   # View logs (wait for "Application startup complete")
+#   docker compose logs -f
+#
+#   # Stop
+#   docker compose down
+#
+# Requirements:
+#   - NVIDIA GPU with 24GB+ VRAM (L4, A10G, A100)
+#   - Docker with NVIDIA Container Toolkit
+#   - nvidia-smi must work before running
+#
+# =============================================================================
+
+services:
+  blitz:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: blitz:latest
+    container_name: blitz
+    ports:
+      - "8000:8000"
+
+    # GPU configuration
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+    # Mount test fixtures for easy testing
+    volumes:
+      - ./tests/fixtures:/data:ro
+
+    # Load environment from .env file
+    env_file:
+      - .env
+
+    # Recommended for long-running containers with large models
+    shm_size: '2gb'
+    ulimits:
+      memlock: -1
+      stack: 67108864
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s  # Allow time for model loading
+
+    # Restart policy for production
+    restart: unless-stopped
+
+    # Logging configuration
+    logging:
+      driver: json-file
+      options:
+        max-size: "100m"
+        max-file: "3"
