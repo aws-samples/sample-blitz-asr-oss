@@ -357,4 +357,4 @@ Long audio is most cost-effective:
 - `blitz/server.py`: Main server implementation
 - `blitz/config.py`: Configuration and thresholds
 - `tests/test_microbatch_benefit.py`: Performance testing tool
-- `docs/TESTING.md`: Load testing documentation
+- `docs/LOAD_TESTING.md`: Load testing documentation

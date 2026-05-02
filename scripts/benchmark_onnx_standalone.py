@@ -68,7 +68,7 @@ def get_gpu_memory():
         import torch
         if torch.cuda.is_available():
             return torch.cuda.memory_allocated() / 1024 / 1024
-    except:
+    except Exception:
         pass
     return None
 
@@ -79,7 +79,7 @@ def get_ram_usage():
         import psutil
         process = psutil.Process(os.getpid())
         return process.memory_info().rss / 1024 / 1024
-    except:
+    except Exception:
         pass
     return None
 
@@ -127,11 +127,16 @@ def download_onnx_models(model_path: str) -> bool:
 
     os.makedirs(model_path, exist_ok=True)
 
+    # Benchmark script pins via env var to match production revision policy;
+    # leave unset to fetch latest (dev convenience). See SECURITY.md.
+    revision = os.environ.get("TIER2_ONNX_REVISION") or None
     for repo_id, filename in required_files:
         local_file = os.path.join(model_path, filename)
         if not os.path.exists(local_file):
             logger.info(f"Downloading {filename} from {repo_id}...")
-            hf_hub_download(repo_id, filename, local_dir=model_path)
+            hf_hub_download(  # nosec B615
+                repo_id, filename, local_dir=model_path, revision=revision
+            )
 
     return True
 
@@ -170,7 +175,7 @@ def benchmark_onnx_model(
             import torch
             if torch.cuda.is_available():
                 torch.cuda.synchronize()
-        except:
+        except Exception:
             pass
 
     # Clear caches
@@ -180,7 +185,7 @@ def benchmark_onnx_model(
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
             torch.cuda.synchronize()
-    except:
+    except Exception:
         pass
 
     # Measure VRAM before
@@ -194,7 +199,7 @@ def benchmark_onnx_model(
         import torch
         if torch.cuda.is_available():
             torch.cuda.synchronize()
-    except:
+    except Exception:
         pass
     end = time.perf_counter()
 
@@ -305,7 +310,7 @@ def run_benchmark(
         import torch
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
-    except:
+    except Exception:
         pass
 
     onnx_start = time.perf_counter()

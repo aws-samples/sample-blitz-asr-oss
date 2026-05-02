@@ -17,6 +17,7 @@ import argparse
 import logging
 import sys
 from pathlib import Path
+from typing import Optional
 
 logging.basicConfig(
     level=logging.INFO,
@@ -57,17 +58,26 @@ def check_huggingface_hub():
         return False
 
 
-def download_file(repo_id: str, filename: str, output_dir: Path) -> bool:
-    """Download a single file from HuggingFace Hub."""
+def download_file(
+    repo_id: str,
+    filename: str,
+    output_dir: Path,
+    revision: Optional[str] = None,
+) -> bool:
+    """Download a single file from HuggingFace Hub.
+
+    ``revision`` pins to a commit SHA/tag; see SECURITY.md for policy.
+    """
     from huggingface_hub import hf_hub_download
 
     try:
         logger.info(f"  Downloading {filename} from {repo_id}...")
-        hf_hub_download(
+        hf_hub_download(  # nosec B615
             repo_id=repo_id,
             filename=filename,
             local_dir=str(output_dir),
-            local_dir_use_symlinks=False
+            local_dir_use_symlinks=False,
+            revision=revision,
         )
         return True
     except Exception as e:

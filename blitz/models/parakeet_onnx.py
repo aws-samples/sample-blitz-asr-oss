@@ -108,7 +108,7 @@ class ParakeetONNXModel:
         )
 
         precision_str = "FP16" if quantization == "fp16" else "FP32"
-        print(f"✅ Parakeet ONNX loaded in {precision_str} mode")
+        logger.info("Parakeet ONNX loaded in %s mode", precision_str)
 
     def _models_exist(self) -> bool:
         """Check if required model files exist."""
@@ -206,7 +206,7 @@ class ParakeetONNXModel:
                     revision=self.revision,
                 )
 
-            logger.info("✅ Model download complete!")
+            logger.info("Model download complete")
 
         except Exception as e:
             raise RuntimeError(
@@ -259,7 +259,7 @@ class ParakeetONNXModel:
 
         # Handle file path - load and process as numpy array for proper chunking
         if isinstance(audio, str):
-            print(f"🔊 ONNX loading file: {audio}")
+            logger.info("ONNX loading file: %s", audio)
             try:
                 # Load audio file to numpy array
                 audio_data, file_sr = sf.read(audio, dtype="float32")
@@ -284,8 +284,9 @@ class ParakeetONNXModel:
                     )
 
                 duration_sec = len(audio_data) / sample_rate
-                print(
-                    f"🔊 ONNX loaded file: {len(audio_data)} samples, {duration_sec:.1f}s"
+                logger.info(
+                    "ONNX loaded file: %d samples, %.1fs",
+                    len(audio_data), duration_sec,
                 )
 
                 # Apply same chunking logic as numpy arrays
@@ -299,7 +300,7 @@ class ParakeetONNXModel:
                 else:
                     text = self._transcribe_single(audio_data, sample_rate)
 
-                print(f"🔊 ONNX transcribed {len(text)} chars")
+                logger.info("ONNX transcribed %d chars", len(text))
             except Exception as e:
                 logger.exception("ONNX recognize failed: %s: %r", type(e).__name__, e)
                 raise
@@ -308,8 +309,9 @@ class ParakeetONNXModel:
             # Save to temp file and process
             sample_rate = 16000
             duration_sec = len(audio) / sample_rate
-            print(
-                f"🔊 ONNX processing numpy array: shape={audio.shape}, dtype={audio.dtype}, duration={duration_sec:.1f}s"
+            logger.info(
+                "ONNX processing numpy array: shape=%s, dtype=%s, duration=%.1fs",
+                audio.shape, audio.dtype, duration_sec,
             )
 
             if audio.dtype != np.float32:
@@ -330,7 +332,7 @@ class ParakeetONNXModel:
                 # Process directly
                 text = self._transcribe_single(audio, sample_rate)
 
-            print(f"🔊 ONNX transcribed {len(text)} chars")
+            logger.info("ONNX transcribed %d chars", len(text))
         else:
             raise TypeError(
                 f"audio must be str, np.ndarray, or list, got {type(audio)}"
@@ -375,8 +377,9 @@ class ParakeetONNXModel:
             audio = np.pad(audio, (0, pad_samples), mode="constant", constant_values=0)
 
         duration_sec = len(audio) / sample_rate
-        print(
-            f"🔊 ONNX _transcribe_single: {len(audio)} samples, {duration_sec:.1f}s at {sample_rate}Hz"
+        logger.debug(
+            "ONNX _transcribe_single: %d samples, %.1fs at %dHz",
+            len(audio), duration_sec, sample_rate,
         )
 
         # Create temp file
@@ -414,8 +417,9 @@ class ParakeetONNXModel:
 
         total_samples = len(audio)
         num_chunks = (total_samples - overlap_samples) // stride + 1
-        print(
-            f"🔊 ONNX chunking {total_samples / sample_rate:.1f}s audio into {num_chunks} chunks of {max_chunk_sec}s"
+        logger.info(
+            "ONNX chunking %.1fs audio into %d chunks of %ss",
+            total_samples / sample_rate, num_chunks, max_chunk_sec,
         )
 
         transcripts = []
@@ -427,15 +431,16 @@ class ParakeetONNXModel:
             chunk = audio[start:end]
             chunk_idx += 1
 
-            print(
-                f"🔊 ONNX chunk {chunk_idx}: samples {start}-{end} ({len(chunk) / sample_rate:.1f}s)"
+            logger.debug(
+                "ONNX chunk %d: samples %d-%d (%.1fs)",
+                chunk_idx, start, end, len(chunk) / sample_rate,
             )
 
             try:
                 chunk_text = self._transcribe_single(chunk, sample_rate)
                 transcripts.append(chunk_text)
             except Exception as e:
-                print(f"❌ ONNX chunk {chunk_idx} failed: {e}")
+                logger.error("ONNX chunk %d failed: %s", chunk_idx, e)
                 # Continue with remaining chunks
                 transcripts.append("")
 

@@ -50,32 +50,36 @@ class BatchWorker:
         self.max_batch_size = max_batch_size
         self.batch_timeout_ms = batch_timeout_ms
 
+    async def _requeue(self, job: Dict) -> None:
+        """Put a misrouted job back and balance the queue's unfinished_tasks counter."""
+        await self.transcription_queue.put(job)
+        self.transcription_queue.task_done()
+
     async def run(self) -> None:
         """
         Run the batch worker loop.
 
         Forever drains queue → batches → processes → returns results.
         """
-        print(
-            f"🔄 {self.engine_name.capitalize()} batch worker started "
-            f"(batch_size={self.max_batch_size}, timeout={self.batch_timeout_ms}ms)"
+        logger.info(
+            "%s batch worker started (batch_size=%d, timeout=%sms)",
+            self.engine_name.capitalize(),
+            self.max_batch_size,
+            self.batch_timeout_ms,
         )
 
         while True:
+            batch: List[Dict] = []
             try:
-                # Wait for first request
                 job = await self.transcription_queue.get()
 
-                # Filter by engine
                 if job["engine"] != self.engine_name:
-                    # Put back if not for this worker
-                    await self.transcription_queue.put(job)
-                    await asyncio.sleep(0.001)  # Brief sleep to avoid busy loop
+                    await self._requeue(job)
+                    await asyncio.sleep(0.001)  # avoid busy-loop if all jobs misrouted
                     continue
 
                 batch = [job]
 
-                # Gather additional requests within timeout
                 deadline = asyncio.get_event_loop().time() + (
                     self.batch_timeout_ms / 1000
                 )
@@ -93,8 +97,7 @@ class BatchWorker:
                         if next_job["engine"] == self.engine_name:
                             batch.append(next_job)
                         else:
-                            # Put back if not for this worker
-                            await self.transcription_queue.put(next_job)
+                            await self._requeue(next_job)
 
                     except asyncio.TimeoutError:
                         break
@@ -115,7 +118,9 @@ class BatchWorker:
                     self.cleanup_func(batch, results)
 
             except asyncio.CancelledError:
-                print(f"🛑 {self.engine_name.capitalize()} batch worker cancelled")
+                logger.info(
+                    "%s batch worker cancelled", self.engine_name.capitalize()
+                )
                 break
 
             except Exception as e:
@@ -123,7 +128,6 @@ class BatchWorker:
                     "%s batch worker error: %s", self.engine_name.capitalize(), e
                 )
 
-                # Set exception for all jobs in batch
                 for job in batch:
                     future = self.pending_results.get(job["job_id"])
                     if future and not future.done():

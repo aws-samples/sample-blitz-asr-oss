@@ -7,10 +7,14 @@ Provides interface for OpenAI Whisper models with:
 - Optional separate tiny model for language detection
 """
 
+import logging
 from typing import Collection, Dict, List, Optional, Tuple, Union
+
 import torch
 import numpy as np
 from transformers import WhisperProcessor, WhisperForConditionalGeneration
+
+logger = logging.getLogger(__name__)
 
 from blitz.utils.audio import resample_audio
 
@@ -62,7 +66,7 @@ class WhisperModel:
         self.model = WhisperForConditionalGeneration.from_pretrained(  # nosec B615
             primary_model_name, revision=primary_rev
         ).to(self.device)
-        print(f"✅ Whisper {primary_model_name} loaded as primary model")
+        logger.info("Whisper %s loaded as primary model", primary_model_name)
 
         # Conditionally load separate tiny model for language detection.
         # Revision is config-driven (WHISPER_TINY_REVISION); see SECURITY.md.
@@ -73,12 +77,12 @@ class WhisperModel:
             self.lang_detect_model = WhisperForConditionalGeneration.from_pretrained(  # nosec B615
                 tiny_model_name, revision=tiny_rev
             ).to(self.device)
-            print("✅ Whisper tiny loaded for language detection")
+            logger.info("Whisper tiny loaded for language detection")
         else:
             # Use primary model for language detection
             self.lang_detect_processor = self.processor
             self.lang_detect_model = self.model
-            print("✅ Using Whisper large-v3-turbo for language detection")
+            logger.info("Using Whisper large-v3-turbo for language detection")
 
     def detect_language(
         self,

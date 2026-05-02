@@ -71,7 +71,7 @@ def get_gpu_memory():
         import torch
         if torch.cuda.is_available():
             return torch.cuda.memory_allocated() / 1024 / 1024
-    except:
+    except Exception:
         pass
     return None
 
@@ -82,7 +82,7 @@ def get_ram_usage():
         import psutil
         process = psutil.Process(os.getpid())
         return process.memory_info().rss / 1024 / 1024
-    except:
+    except Exception:
         pass
     return None
 

@@ -14,6 +14,7 @@ Integrated server: ~400 lines (76% reduction)
 
 import asyncio
 import io
+import logging
 import os
 import pathlib
 import re
@@ -33,8 +34,11 @@ from blitz import ApplicationState, get_app_state, create_app
 from blitz.schemas.api import TranscriptionResponse, SRTResponse, HealthResponse, ModelsInfoResponse
 from blitz.utils.audio import get_audio_duration
 from blitz.utils.formatting import generate_srt_content, generate_vtt_content
+from blitz.utils.metrics import compute_cost_metrics
 from blitz.banner import print_banner, print_startup_info
 
+
+logger = logging.getLogger(__name__)
 
 # Create FastAPI app with integrated lifespan management
 app = create_app()
@@ -57,78 +61,61 @@ def _safe_attachment_filename(name: Optional[str], fallback: str) -> str:
 # Helper Functions
 # ============================================================================
 
-# G6.xlarge pricing (g6.xlarge with NVIDIA L4 GPU) - high end of ranges
-G6_XLARGE_PRICING = {
-    "on_demand": 0.8048,      # On-Demand rate (us-east-1)
-    "spot": 0.35,             # Spot (upper end: 0.20-0.35/hr range)
-    "savings_1yr": 0.4890,    # 1-yr Standard RI (us-east-1)
-    "savings_3yr": 0.3215,    # 3-yr Standard RI (us-east-1)
-}
-
 
 def calculate_processing_costs(
     total_processing_time: float,
     audio_duration_sec: float,
     lang_detect_time_ms: float,
-    transcribe_time_seconds: float
+    transcribe_time_seconds: float,
+    *,
+    pricing: dict,
+    instance_type: str,
+    region: str,
 ) -> dict:
-    """
-    Calculate processing metrics and estimated GPU costs.
-
-    Args:
-        total_processing_time: Total time from request to response (seconds)
-        audio_duration_sec: Duration of audio file (seconds)
-        lang_detect_time_ms: Time spent on language detection (milliseconds)
-        transcribe_time_seconds: Time spent on transcription (seconds)
-
-    Returns:
-        Dictionary with processing metrics and cost estimates including:
-        - Real-time factor (RTF)
-        - Cost per 1000 minutes for all pricing models
-        - Cost breakdown percentages
-    """
-    # Calculate real-time factor (RTF): processing_time / audio_duration
-    rtf = total_processing_time / audio_duration_sec if audio_duration_sec > 0 else 0
-
-    # Calculate processing time needed for 1000 minutes (60,000 seconds) of audio
-    processing_time_for_1000_min = 60000 * rtf
-    processing_hours_for_1000_min = processing_time_for_1000_min / 3600
-
-    # Calculate cost per 1000 minutes of audio for each pricing model
-    costs_per_1000_min = {
-        "on_demand": processing_hours_for_1000_min * G6_XLARGE_PRICING["on_demand"],
-        "spot": processing_hours_for_1000_min * G6_XLARGE_PRICING["spot"],
-        "savings_1yr": processing_hours_for_1000_min * G6_XLARGE_PRICING["savings_1yr"],
-        "savings_3yr": processing_hours_for_1000_min * G6_XLARGE_PRICING["savings_3yr"],
-    }
-
-    # Calculate percentage breakdown of processing time
-    lang_detect_seconds = lang_detect_time_ms / 1000
-    lang_detect_pct = (lang_detect_seconds / total_processing_time * 100) if total_processing_time > 0 else 0
-    transcribe_pct = (transcribe_time_seconds / total_processing_time * 100) if total_processing_time > 0 else 0
-
+    """Build the ``metrics`` block for the /transcribe JSON response."""
+    m = compute_cost_metrics(
+        total_processing_time,
+        audio_duration_sec,
+        lang_detect_time_ms,
+        transcribe_time_seconds,
+        pricing,
+    )
     return {
         "total_processing_time_sec": round(total_processing_time, 3),
         "audio_duration_sec": round(audio_duration_sec, 3),
-        "real_time_factor": round(rtf, 3),
+        "real_time_factor": round(m.rtf, 3),
         "language_detection_time_ms": round(lang_detect_time_ms, 2),
         "transcription_time_sec": round(transcribe_time_seconds, 3),
         "cost_per_1000_min_audio_usd": {
-            "on_demand": round(costs_per_1000_min["on_demand"], 2),
-            "spot": round(costs_per_1000_min["spot"], 2),
-            "savings_1yr": round(costs_per_1000_min["savings_1yr"], 2),
-            "savings_3yr": round(costs_per_1000_min["savings_3yr"], 2),
+            option: round(cost, 2) for option, cost in m.cost_per_1000_min.items()
         },
         "cost_breakdown_percent": {
-            "language_detection": round(lang_detect_pct, 2),
-            "transcription": round(transcribe_pct, 2),
+            "language_detection": round(m.lang_detect_pct, 2),
+            "transcription": round(m.transcribe_pct, 2),
         },
-        "instance_type": "g6.xlarge",
-        "region": "us-east-1"
+        "instance_type": instance_type,
+        "region": region,
     }
 
 
-async def load_audio_file(file: UploadFile) -> tuple[np.ndarray, int]:
+async def _read_bounded(file: UploadFile, limit: int) -> bytes:
+    """Read an UploadFile into memory, rejecting bodies larger than ``limit`` bytes.
+
+    Streams in chunks so oversized uploads are terminated before the full body is
+    buffered. Prevents memory exhaustion on the no-auth ``/transcribe`` endpoint.
+    """
+    buf = bytearray()
+    while True:
+        chunk = await file.read(1024 * 1024)
+        if not chunk:
+            break
+        if len(buf) + len(chunk) > limit:
+            raise HTTPException(status_code=413, detail="Upload too large")
+        buf.extend(chunk)
+    return bytes(buf)
+
+
+async def load_audio_file(file: UploadFile, max_bytes: int) -> tuple[np.ndarray, int]:
     """
     Load audio file from upload, with FFmpeg fallback for unsupported formats.
 
@@ -144,16 +131,21 @@ async def load_audio_file(file: UploadFile) -> tuple[np.ndarray, int]:
     Returns:
         Tuple of (audio_array, sample_rate)
     """
-    data = await file.read()
+    data = await _read_bounded(file, max_bytes)
+    log_name = _safe_attachment_filename(file.filename, "upload")
 
     # Try soundfile first (supports WAV, FLAC, OGG)
     try:
         audio, sr = sf.read(io.BytesIO(data))
-        print(f"📁 Loaded {file.filename} via soundfile: sr={sr}, shape={audio.shape}, dtype={audio.dtype}")
+        logger.info(
+            "Loaded %s via soundfile: sr=%s, shape=%s, dtype=%s",
+            log_name, sr, audio.shape, audio.dtype,
+        )
     except Exception as e:
         # soundfile failed - use FFmpeg to convert to WAV
-        print(f"📁 soundfile failed for {file.filename}: {e}, trying FFmpeg...")
-        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as tmp_in:
+        logger.info("soundfile failed for %s: %s, trying FFmpeg", log_name, e)
+        suffix = os.path.splitext(file.filename or "")[1] or ".bin"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_in:
             tmp_in.write(data)
             tmp_in_path = tmp_in.name
 
@@ -179,7 +171,10 @@ async def load_audio_file(file: UploadFile) -> tuple[np.ndarray, int]:
 
             # Load converted WAV
             audio, sr = sf.read(tmp_out_path)
-            print(f"📁 FFmpeg converted {file.filename}: sr={sr}, shape={audio.shape}, dtype={audio.dtype}")
+            logger.info(
+                "FFmpeg converted %s: sr=%s, shape=%s, dtype=%s",
+                log_name, sr, audio.shape, audio.dtype,
+            )
 
         finally:
             # Clean up temp files
@@ -193,7 +188,10 @@ async def load_audio_file(file: UploadFile) -> tuple[np.ndarray, int]:
     # Ensure float32 dtype (NeMo requires float32)
     audio = audio.astype('float32')
 
-    print(f"📁 Final audio: sr={sr}, samples={len(audio)}, duration={len(audio)/sr:.2f}s, dtype={audio.dtype}")
+    logger.info(
+        "Final audio: sr=%s, samples=%d, duration=%.2fs, dtype=%s",
+        sr, len(audio), len(audio) / sr, audio.dtype,
+    )
     return audio, sr
 
 
@@ -240,7 +238,7 @@ async def transcribe(
         start_time = time.time()
 
         # ---- Load and preprocess audio ----
-        audio, sr = await load_audio_file(file)
+        audio, sr = await load_audio_file(file, state.config.max_upload_bytes)
         duration_sec = get_audio_duration(audio, sr)
 
         # ---- Language detection FIRST (unless hint provided) ----
@@ -392,7 +390,10 @@ async def transcribe(
             total_processing_time,
             duration_sec,
             lang_detect_time_ms,
-            transcribe_time_seconds
+            transcribe_time_seconds,
+            pricing=state.config.get_gpu_pricing(),
+            instance_type=state.config.instance_type,
+            region=state.config.instance_region,
         )
 
         # ---- Build response ----
@@ -573,11 +574,15 @@ async def models_info(state: ApplicationState = Depends(get_app_state)):
     return response
 
 
-if __name__ == "__main__":
+def main() -> None:
+    """Entry point for the ``blitz`` console script."""
     import uvicorn
 
-    # Display branded banner
     print_banner()
     print_startup_info(host="0.0.0.0", port=8000)
 
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
+
+if __name__ == "__main__":
+    main()

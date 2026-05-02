@@ -6,9 +6,13 @@ the generic BatchWorker class. They handle model-specific optimizations
 like chunking, attention mode switching, and timestamp extraction.
 """
 
+import logging
 from typing import Dict, List
+
 import torch
 import torchaudio
+
+logger = logging.getLogger(__name__)
 
 from blitz.utils.audio import (
     chunk_audio,
@@ -110,8 +114,9 @@ def process_parakeet_batch(
                 if duration > chunk_length_sec:
                     # Chunk this long audio to prevent OOM
                     chunks = chunk_audio(audio, sr, chunk_length_sec, chunk_overlap_sec)
-                    print(
-                        f"⚙️  Chunking {duration:.1f}s audio into {len(chunks)} chunks"
+                    logger.info(
+                        "Chunking %.1fs audio into %d chunks",
+                        duration, len(chunks),
                     )
 
                     # Process each chunk (no timestamps)
@@ -392,8 +397,9 @@ def _set_parakeet_attention_mode(
     # ONNX models don't have cfg attribute - skip attention mode setting
     if not hasattr(parakeet_model, "cfg"):
         if duration_sec > local_attention_threshold_sec:
-            print(
-                f"⚠️  ONNX backend doesn't support local attention mode for {duration_sec:.1f}s audio"
+            logger.warning(
+                "ONNX backend doesn't support local attention mode for %.1fs audio",
+                duration_sec,
             )
         return
 
@@ -410,7 +416,7 @@ def _set_parakeet_attention_mode(
                         64,
                         64,
                     ]  # Local attention window
-        print(f"⚙️  Switched to local attention for {duration_sec:.1f}s audio")
+        logger.info("Switched to local attention for %.1fs audio", duration_sec)
     else:
         # Normal audio - use full attention
         with open_dict(parakeet_model.cfg.encoder):

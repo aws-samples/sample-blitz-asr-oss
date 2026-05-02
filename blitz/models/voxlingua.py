@@ -7,11 +7,15 @@ Provides interface for SpeechBrain VoxLingua107 ECAPA model with:
 - Fallback when Whisper confidence is low
 """
 
+import logging
 from typing import Dict, Optional, Tuple, Union
+
 import torch
 import numpy as np
 import torchaudio
 from speechbrain.inference.classifiers import EncoderClassifier
+
+logger = logging.getLogger(__name__)
 
 from blitz.config import VOXLINGUA_TO_ISO639_1
 
@@ -48,11 +52,11 @@ class VoxLinguaModel:
             self.model = EncoderClassifier.from_hparams(
                 source=model_source, savedir=save_dir, run_opts={"device": self.device}
             )
-            print(
-                "✅ VoxLingua107 loaded on CPU (107 languages, frees GPU for transcription)"
+            logger.info(
+                "VoxLingua107 loaded on CPU (107 languages, frees GPU for transcription)"
             )
         except Exception as e:
-            print(f"⚠️  VoxLingua107 not available: {e}")
+            logger.warning("VoxLingua107 not available: %s", e)
             self.model = None
             raise
 

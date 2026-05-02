@@ -5,11 +5,15 @@ Provides fast silence detection using Silero VAD before language detection.
 Optimized for minimal latency and memory usage.
 """
 
-from typing import Dict
+import logging
 import time
+from pathlib import Path
+from typing import Dict
+
 import numpy as np
 import torch
-from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 class VADService:
@@ -52,7 +56,7 @@ class VADService:
                 **hub_kwargs,
             )
             self._model = self._model.to(self.device)
-            print(f"✅ Silero VAD loaded on {self.device}")
+            logger.info("Silero VAD loaded on %s", self.device)
 
     def detect_silence(
         self,

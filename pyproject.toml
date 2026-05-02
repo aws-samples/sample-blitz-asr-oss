@@ -25,6 +25,7 @@ dependencies = [
     # Core Web Framework
     "fastapi>=0.104.0",
     "uvicorn[standard]>=0.24.0",
+    "python-multipart>=0.0.6,<1",
     # Audio Processing
     "numpy>=1.24.0",
     "soundfile>=0.12.1",
@@ -34,6 +35,8 @@ dependencies = [
     "transformers>=4.35.0",
     "nemo_toolkit[asr]>=2.0.0",
     "speechbrain>=1.0.0",
+    "faster-whisper>=1.0.0,<2",
+    "sentencepiece>=0.1.99,<1",
     # Configuration & Data Validation
     "pydantic>=2.0.0",
     "pydantic-settings>=2.0.0",
@@ -56,7 +59,7 @@ dev = [
 ]
 
 [project.urls]
-Repository = "https://github.com/bmaguiraz/parakeet-nim"
+Repository = "https://github.com/bmaguiraz/github-oss"
 
 [project.scripts]
 blitz = "blitz.server:main"

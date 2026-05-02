@@ -142,7 +142,7 @@ def run_calibration(
                 print(f"  Duration: {duration:.1f}s")
                 print(f"  Whisper:   {w_lang} ({w_conf:.3f}) in {whisper_time:.0f}ms")
                 print(f"  VoxLingua: {v_lang} ({v_conf:.3f}) in {vox_time:.0f}ms")
-                print(f"  Agreement: {'✓' if w_lang == v_lang else '✗'}")
+                print(f"  Agreement: {'yes' if w_lang == v_lang else 'no'}")
 
         except Exception as e:
             print(f"  Error processing {file_path}: {e}")

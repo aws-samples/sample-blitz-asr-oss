@@ -39,12 +39,14 @@ if TYPE_CHECKING:
     from blitz.batch.batch_config import BatchConfig
     from blitz.batch.s3_handler import S3Handler
 
+from blitz.config import config as server_config
 from blitz.utils.audio import (
     chunk_audio,
     cleanup_temp_file,
     merge_chunked_transcripts,
     save_audio_to_temp,
 )
+from blitz.utils.metrics import compute_cost_metrics
 
 # Configure logging early
 logging.basicConfig(
@@ -138,67 +140,25 @@ def calculate_processing_costs(
     lang_detect_time_ms: float,
     transcribe_time_seconds: float,
 ) -> Dict[str, Any]:
-    """
-    Calculate processing metrics and estimated GPU costs.
-
-    Args:
-        total_processing_time: Total time from request to response (seconds)
-        audio_duration_sec: Duration of audio file (seconds)
-        lang_detect_time_ms: Time spent on language detection (milliseconds)
-        transcribe_time_seconds: Time spent on transcription (seconds)
-
-    Returns:
-        Dictionary with processing metrics and cost estimates
-    """
-    # G6.xlarge pricing
-    G6_XLARGE_PRICING = {
-        "on_demand": 0.8048,
-        "spot": 0.35,
-        "savings_1yr": 0.4890,
-        "savings_3yr": 0.3215,
-    }
-
-    # Calculate real-time factor (RTF)
-    rtf = total_processing_time / audio_duration_sec if audio_duration_sec > 0 else 0
-
-    # Calculate cost per 1000 minutes of audio
-    processing_time_for_1000_min = 60000 * rtf
-    processing_hours_for_1000_min = processing_time_for_1000_min / 3600
-
-    costs_per_1000_min = {
-        "on_demand": processing_hours_for_1000_min * G6_XLARGE_PRICING["on_demand"],
-        "spot": processing_hours_for_1000_min * G6_XLARGE_PRICING["spot"],
-        "savings_1yr": processing_hours_for_1000_min * G6_XLARGE_PRICING["savings_1yr"],
-        "savings_3yr": processing_hours_for_1000_min * G6_XLARGE_PRICING["savings_3yr"],
-    }
-
-    # Calculate percentage breakdown
-    lang_detect_seconds = lang_detect_time_ms / 1000
-    lang_detect_pct = (
-        (lang_detect_seconds / total_processing_time * 100)
-        if total_processing_time > 0
-        else 0
+    """Build the ``metrics`` block for the batch-mode S3 output JSON."""
+    m = compute_cost_metrics(
+        total_processing_time,
+        audio_duration_sec,
+        lang_detect_time_ms,
+        transcribe_time_seconds,
+        server_config.get_gpu_pricing(),
     )
-    transcribe_pct = (
-        (transcribe_time_seconds / total_processing_time * 100)
-        if total_processing_time > 0
-        else 0
-    )
-
     return {
         "total_time_sec": round(total_processing_time, 3),
-        "rtf": round(rtf, 4),
+        "rtf": round(m.rtf, 4),
         "lang_detect_ms": round(lang_detect_time_ms, 2),
         "transcribe_sec": round(transcribe_time_seconds, 3),
         "cost_per_1000_min": {
-            "on_demand": round(costs_per_1000_min["on_demand"], 2),
-            "spot": round(costs_per_1000_min["spot"], 2),
-            "savings_1yr": round(costs_per_1000_min["savings_1yr"], 2),
-            "savings_3yr": round(costs_per_1000_min["savings_3yr"], 2),
+            option: round(cost, 2) for option, cost in m.cost_per_1000_min.items()
         },
         "breakdown_pct": {
-            "lang_detect": round(lang_detect_pct, 1),
-            "transcribe": round(transcribe_pct, 1),
+            "lang_detect": round(m.lang_detect_pct, 1),
+            "transcribe": round(m.transcribe_pct, 1),
         },
     }
 
@@ -439,18 +399,13 @@ def _transcribe_with_parakeet(
     # Determine approach based on duration
     if duration_sec <= config.short_audio_threshold_sec:
         # Direct transcription for short audio
-        output = model.transcribe(audio, timestamps=config.include_timestamps)
-
-        # Extract text and timestamps
-        if output:
-            text = output[0].text if hasattr(output[0], "text") else str(output[0])
-            timestamps = None
-            if config.include_timestamps and hasattr(output[0], "timestamp"):
-                ts_data = output[0].timestamp
-                if ts_data and "segment" in ts_data:
-                    timestamps = {"segment": ts_data["segment"]}
-            return text, timestamps
-        return "", None
+        text, ts_data = model.transcribe(
+            audio, timestamps=config.include_timestamps
+        )
+        timestamps = None
+        if config.include_timestamps and ts_data and "segment" in ts_data:
+            timestamps = {"segment": ts_data["segment"]}
+        return text, timestamps
 
     # Chunked transcription for longer audio to prevent GPU OOM
     logger.info(
@@ -469,11 +424,9 @@ def _transcribe_with_parakeet(
         temp_file = save_audio_to_temp(audio_chunk, sample_rate)
         try:
             # Transcribe chunk without timestamps (merging timestamps across chunks is complex)
-            output = model.transcribe(temp_file, timestamps=False)
-            if output:
-                text = output[0].text if hasattr(output[0], "text") else str(output[0])
-                chunk_results.append((text, start_sample, end_sample))
-                logger.debug(f"Chunk {i + 1}/{len(chunks)}: {len(text)} chars")
+            text, _ = model.transcribe(temp_file, timestamps=False)
+            chunk_results.append((text, start_sample, end_sample))
+            logger.debug(f"Chunk {i + 1}/{len(chunks)}: {len(text)} chars")
         finally:
             cleanup_temp_file(temp_file)
 

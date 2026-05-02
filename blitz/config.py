@@ -22,7 +22,13 @@ except ImportError:
     from pydantic import BaseModel as BaseSettings
 
     _MODEL_CONFIG = {}
-    print("⚠️  Warning: pydantic-settings not installed, using BaseModel fallback")
+    import warnings
+
+    warnings.warn(
+        "pydantic-settings not installed; falling back to BaseModel "
+        "(env var reading disabled)",
+        stacklevel=2,
+    )
 
 
 class ServerConfig(BaseSettings):
@@ -110,7 +116,7 @@ class ServerConfig(BaseSettings):
     # ============================================================================
 
     short_audio_threshold_sec: int = Field(
-        default=600,
+        default=300,
         description="Audio shorter than this uses direct array processing (fastest, lowest memory)",
         ge=60,
         le=3600,
@@ -248,26 +254,31 @@ class ServerConfig(BaseSettings):
         default="us-east-1", description="AWS region for cost calculations"
     )
 
-    # Hourly GPU costs (USD) for g6.xlarge in us-east-1
+    # Hourly GPU costs (USD) for g6.xlarge in us-east-1.
+    # Source: AWS Pricing API (https://aws.amazon.com/ec2/pricing/reserved-instances/pricing/),
+    # Linux/Shared/No Upfront. Last refreshed 2026-04-29 (API publicationDate).
+    # Refresh with: python scripts/update_pricing.py
+    # Spot is real-time and volatile; the default below is the upper end of a
+    # recent 7-day us-east-1 sample; override per deployment as needed.
     gpu_price_on_demand: float = Field(
         default=0.8048, description="On-Demand hourly rate (USD)", ge=0.0
     )
 
     gpu_price_spot: float = Field(
-        default=0.52,
-        description="Spot instance hourly rate (USD, high end of typical range)",
+        default=0.42,
+        description="Spot instance hourly rate (USD, upper end of recent us-east-1 range)",
         ge=0.0,
     )
 
     gpu_price_savings_1yr: float = Field(
-        default=0.52,
-        description="1-year Savings Plan hourly rate (USD, high end)",
+        default=0.5239,
+        description="1-year Standard RI, No Upfront (USD/hr)",
         ge=0.0,
     )
 
     gpu_price_savings_3yr: float = Field(
-        default=0.45,
-        description="3-year Savings Plan hourly rate (USD, high end)",
+        default=0.3694,
+        description="3-year Standard RI, No Upfront (USD/hr)",
         ge=0.0,
     )
 
@@ -278,6 +289,12 @@ class ServerConfig(BaseSettings):
     batch_mode: bool = Field(
         default=False,
         description="Running in AWS Batch mode (disables async queues, uses synchronous processing)",
+    )
+
+    max_upload_bytes: int = Field(
+        default=500 * 1024 * 1024,
+        description="Maximum accepted /transcribe upload body size in bytes",
+        ge=1024,
     )
 
     # Pydantic v2 configuration for reading environment variables

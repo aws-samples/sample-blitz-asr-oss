@@ -59,7 +59,7 @@ class ParakeetModel:
         # Enable timestamps in model configuration (NeMo 2.4+)
         self._enable_timestamps()
 
-        print("✅ Parakeet loaded in FP32 with timestamps enabled (NeMo 2.4.0)")
+        logger.info("Parakeet loaded in FP32 with timestamps enabled (NeMo 2.4.0)")
 
     def set_precision(self, precision: str) -> None:
         """
@@ -70,7 +70,7 @@ class ParakeetModel:
         """
         self._precision = precision
         if precision != "fp32":
-            print(f"✅ Parakeet precision set to {precision} (using autocast)")
+            logger.info("Parakeet precision set to %s (using autocast)", precision)
 
     def _enable_timestamps(self) -> None:
         """Enable timestamp extraction in NeMo model configuration."""
@@ -81,7 +81,7 @@ class ParakeetModel:
                 self.model.cfg.decoding.segment_seperators = [".", "?", "!", ","]
             self.model.change_decoding_strategy(self.model.cfg.decoding)
         except Exception as e:
-            print(f"⚠️  Could not configure timestamps: {e}")
+            logger.warning("Could not configure timestamps: %s", e)
 
     def set_attention_mode(self, duration_sec: float) -> None:
         """

@@ -12,6 +12,12 @@ GPU-accelerated speech-to-text with intelligent model routing. Supports 100+ lan
 - **Multiple outputs**: text, JSON, SRT, VTT with timestamps
 - **Long-form audio**: chunking with overlap for hours of content
 
+## Architecture
+
+![Blitz architecture](docs/images/architecture.png)
+
+Request flow (solid) and AWS Batch flow (dashed) share the same ingress, detection, and inference layers. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for details.
+
 ## Deployment Options
 
 | Mode | Use Case | Trigger |
@@ -77,11 +83,18 @@ For step-by-step guides, see the `notebooks/` directory:
 **Response (JSON):**
 ```json
 {
-  "transcription": "Hello world.",
-  "language": "en",
-  "model": "tier2",
+  "text": "Hello world.",
+  "language": {
+    "code": "en",
+    "confidence": 0.98,
+    "top_languages": [{"code": "en", "confidence": 0.98}],
+    "detection_method": "whisper",
+    "detection_model": "whisper-large-v3-turbo"
+  },
+  "engine": "tier2",
+  "duration_sec": 24.0,
+  "timestamps": null,
   "metrics": {
-    "audio_duration_sec": 24.0,
     "real_time_factor": 0.069
   }
 }
@@ -161,6 +174,23 @@ Benchmarked on g6.xlarge (NVIDIA L4 24GB):
 | tier1 | English | **$0.03** |
 | tier2 | 25 EU languages | $0.06-0.08 |
 | tier3 | 100+ languages | $0.08-0.15 |
+
+### Pricing data
+
+Hourly GPU rates used for the cost estimates in the `/transcribe` response live in [`blitz/config.py`](blitz/config.py) as the `gpu_price_*` fields on `ServerConfig`, and are overridable via `GPU_PRICE_*` environment variables (see [`.env.example`](.env.example)). The bundled defaults are pulled from the **AWS Pricing API** (Linux/Shared, No-Upfront Standard RI, observed 2026-04-29) for `g6.xlarge` in `us-east-1`:
+
+| Purchase option | Source endpoint |
+|---|---|
+| On-Demand | [EC2 On-Demand pricing](https://aws.amazon.com/ec2/pricing/on-demand/) |
+| 1-yr / 3-yr Standard RI | [EC2 Reserved Instance pricing](https://aws.amazon.com/ec2/pricing/reserved-instances/pricing/) |
+| Spot | [EC2 Spot pricing](https://aws.amazon.com/ec2/spot/pricing/) — real-time, use `aws ec2 describe-spot-price-history` |
+
+**To refresh:** run [`scripts/update_pricing.py`](scripts/update_pricing.py). It queries the AWS Pricing API and `DescribeSpotPriceHistory`, then prints the values to paste into `blitz/config.py` (and mirror in `.env.example`). The script is intentionally read-only — review before committing.
+
+```bash
+pip install boto3
+python scripts/update_pricing.py --instance-type g6.xlarge --region us-east-1
+```
 
 ## Model Routing
 

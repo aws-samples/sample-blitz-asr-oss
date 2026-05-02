@@ -5,7 +5,10 @@ Provides functions to generate subtitle files from timestamp segments.
 """
 
 import datetime
+import logging
 from typing import Any, Dict, List, Union
+
+logger = logging.getLogger(__name__)
 
 
 def format_srt_time(seconds: float) -> str:
@@ -105,7 +108,7 @@ def generate_srt_content(
                 text = ts[2]
 
             else:
-                print(f"WARNING: Unexpected timestamp format at index {i}: {ts}")
+                logger.warning("Unexpected timestamp format at index %d: %r", i, ts)
                 continue
 
             # Build SRT entry
@@ -115,7 +118,7 @@ def generate_srt_content(
             srt_content.append("")  # Blank line separator
 
         except Exception as e:
-            print(f"ERROR processing timestamp {i}: {e}, data: {ts}")
+            logger.error("Error processing timestamp %d: %s, data: %r", i, e, ts)
             continue
 
     return "\n".join(srt_content)
@@ -169,7 +172,7 @@ def generate_vtt_content(
                 text = ts[2]
 
             else:
-                print(f"WARNING: Unexpected timestamp format at index {i}: {ts}")
+                logger.warning("Unexpected timestamp format at index %d: %r", i, ts)
                 continue
 
             # Build VTT entry (optional cue identifier)
@@ -179,7 +182,7 @@ def generate_vtt_content(
             vtt_content.append("")  # Blank line separator
 
         except Exception as e:
-            print(f"ERROR processing timestamp {i}: {e}, data: {ts}")
+            logger.error("Error processing timestamp %d: %s, data: %r", i, e, ts)
             continue
 
     return "\n".join(vtt_content)
