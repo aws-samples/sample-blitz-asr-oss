@@ -52,6 +52,17 @@ Parameters:
     AllowedValues: [fp32, bfloat16, fp16]
     Description: Tier 2 model precision (bfloat16 recommended, fp16 for ONNX)
 
+  CreateS3VpcEndpoint:
+    Type: String
+    Default: 'No'
+    AllowedValues: ['Yes', 'No']
+    Description: Create a gateway VPC endpoint for S3 (set No if one already exists in the VPC)
+
+  S3VpcEndpointRouteTableIds:
+    Type: CommaDelimitedList
+    Default: ''
+    Description: Route table IDs the S3 gateway endpoint should attach to (only used when CreateS3VpcEndpoint=Yes)
+
 # ============================================================================
 # Resources
 # ============================================================================
@@ -60,14 +71,54 @@ Resources:
   # --------------------------------------------------------------------------
   # S3 Buckets
   # --------------------------------------------------------------------------
-  InputBucket:
+  AccessLogBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub 'blitz-input-${Environment}-${AWS::AccountId}'
+      BucketName: !Sub 'blitz-logs-${Environment}-${AWS::AccountId}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: ObjectWriter
       BucketEncryption:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: ArchiveThenExpireAccessLogs
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 7
+            Transitions:
+              - StorageClass: GLACIER
+                TransitionInDays: 10
+            ExpirationInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: blitz-asr
+
+  InputBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'blitz-input-${Environment}-${AWS::AccountId}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LoggingConfiguration:
+        DestinationBucketName: !Ref AccessLogBucket
+        LogFilePrefix: input-bucket/
       NotificationConfiguration:
         EventBridgeConfiguration:
           EventBridgeEnabled: true
@@ -81,10 +132,18 @@ Resources:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: !Sub 'blitz-output-${Environment}-${AWS::AccountId}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
       BucketEncryption:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: AES256
+      LoggingConfiguration:
+        DestinationBucketName: !Ref AccessLogBucket
+        LogFilePrefix: output-bucket/
       LifecycleConfiguration:
         Rules:
           - Id: DeleteOldTranscripts
@@ -95,6 +154,80 @@ Resources:
           Value: !Ref Environment
         - Key: Project
           Value: blitz-asr
+
+  InputBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref InputBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource:
+              - !GetAtt InputBucket.Arn
+              - !Sub '${InputBucket.Arn}/*'
+            Condition:
+              Bool:
+                'aws:SecureTransport': false
+
+  OutputBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref OutputBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource:
+              - !GetAtt OutputBucket.Arn
+              - !Sub '${OutputBucket.Arn}/*'
+            Condition:
+              Bool:
+                'aws:SecureTransport': false
+
+  # Optional gateway endpoint: keeps Batch<->S3 traffic on the AWS backbone,
+  # cutting NAT gateway cost for high-volume audio I/O. Set
+  # CreateS3VpcEndpoint=No if the VPC already has an S3 endpoint.
+  S3GatewayEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Condition: CreateS3Endpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.s3'
+      RouteTableIds: !Ref S3VpcEndpointRouteTableIds
+
+  AccessLogBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref AccessLogBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource:
+              - !GetAtt AccessLogBucket.Arn
+              - !Sub '${AccessLogBucket.Arn}/*'
+            Condition:
+              Bool:
+                'aws:SecureTransport': false
+          - Sid: AllowS3ServerAccessLogging
+            Effect: Allow
+            Principal:
+              Service: logging.s3.amazonaws.com
+            Action: s3:PutObject
+            Resource: !Sub '${AccessLogBucket.Arn}/*'
+            Condition:
+              Bool:
+                'aws:SecureTransport': true
 
   # --------------------------------------------------------------------------
   # IAM Roles
@@ -262,12 +395,16 @@ Resources:
     Properties:
       LaunchTemplateName: !Sub 'blitz-batch-gpu-${Environment}'
       LaunchTemplateData:
+        MetadataOptions:
+          HttpTokens: required  # IMDSv2 only — blocks SSRF-to-credentials
+          HttpPutResponseHopLimit: 1
         BlockDeviceMappings:
           - DeviceName: /dev/xvda
             Ebs:
               VolumeSize: 100
               VolumeType: gp3
               DeleteOnTermination: true
+              Encrypted: true
 
   # --------------------------------------------------------------------------
   # AWS Batch Resources
@@ -279,6 +416,10 @@ Resources:
       ComputeEnvironmentName: !Sub 'blitz-gpu-${Environment}'
       Type: MANAGED
       State: ENABLED
+      # Tracks the latest GPU-optimized ECS AMI (AL2023 + NVIDIA drivers) so
+      # new instances pick up security patches automatically instead of
+      # pinning to whatever AMI was current at stack creation time.
+      UpdateToLatestImageVersion: true
       ComputeResources:
         Type: !If [UseSpot, SPOT, EC2]
         AllocationStrategy: !If [UseSpot, SPOT_CAPACITY_OPTIMIZED, BEST_FIT_PROGRESSIVE]
@@ -289,6 +430,8 @@ Resources:
         DesiredvCpus: 0
         InstanceTypes: !Ref InstanceTypes
         InstanceRole: !GetAtt BatchInstanceProfile.Arn
+        Ec2Configuration:
+          - ImageType: ECS_AL2023_NVIDIA
         LaunchTemplate:
           LaunchTemplateId: !Ref BatchLaunchTemplate
           Version: !GetAtt BatchLaunchTemplate.LatestVersionNumber
@@ -421,6 +564,7 @@ Resources:
 # ============================================================================
 Conditions:
   UseSpot: !Not [!Equals [!Ref SpotBidPercentage, 0]]
+  CreateS3Endpoint: !Equals [!Ref CreateS3VpcEndpoint, 'Yes']
 
 # ============================================================================
 # Outputs
@@ -437,6 +581,12 @@ Outputs:
     Value: !Ref OutputBucket
     Export:
       Name: !Sub '${AWS::StackName}-OutputBucket'
+
+  AccessLogBucketName:
+    Description: S3 bucket storing access logs for input/output buckets
+    Value: !Ref AccessLogBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-AccessLogBucket'
 
   JobQueueArn:
     Description: ARN of the Batch job queue
