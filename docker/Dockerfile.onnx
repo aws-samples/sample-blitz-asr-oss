@@ -1,0 +1,133 @@
+# Dockerfile.onnx - FP16 ONNX-optimized Blitz ASR
+#
+# This Dockerfile builds Blitz with FP16 ONNX Parakeet models pre-installed.
+# Provides 50% smaller model size and potentially faster inference.
+#
+# Build: docker build -f docker/Dockerfile.onnx -t blitz-fp16 .
+# Run:   docker run --gpus all -p 8000:8000 blitz-fp16
+
+FROM nvcr.io/nvidia/pytorch:24.02-py3
+
+# System deps (FFmpeg included)
+RUN apt-get update && apt-get install -y ffmpeg sox libsndfile1 && rm -rf /var/lib/apt/lists/*
+
+# Python deps
+# Pin ruamel.yaml to avoid 'max_depth' AttributeError with speechbrain/hyperpyyaml
+RUN pip install --no-cache-dir "ruamel.yaml>=0.17.0,<0.18.0"
+
+RUN pip install --no-cache-dir \
+    nemo_toolkit[asr]==2.4.0 \
+    soundfile \
+    fastapi uvicorn[standard] \
+    python-multipart \
+    pydantic \
+    pydantic-settings \
+    faster-whisper \
+    "transformers[torch]" \
+    sentencepiece \
+    torchaudio \
+    torchmetrics \
+    git+https://github.com/speechbrain/speechbrain.git@develop
+
+# ONNX Runtime for FP16 models
+RUN pip install --no-cache-dir \
+    onnx-asr \
+    onnxruntime-gpu \
+    huggingface-hub
+
+# Disable Flash Attention for better compatibility across GPU types
+RUN pip uninstall -y flash-attn flash_attn || true
+ENV HF_USE_FLASH_ATTENTION=0
+
+# Remove image/vision-related extras that break in this PyTorch build
+RUN pip uninstall -y torchvision || true
+
+# Upgrade cuda-python so NeMo can use CUDA graphs with conditional nodes
+RUN /usr/bin/python3 -m pip install --no-cache-dir "cuda-python>=12.3.0"
+
+# ============================================================================
+# 3-Tier Model Routing Configuration
+# ============================================================================
+
+# Tier 1: Fastest (CTC-110M) - default: English only
+ENV TIER1_MODEL=nvidia/parakeet-tdt_ctc-110m
+ENV TIER1_PRECISION=fp16
+ENV TIER1_LANGUAGES=en
+
+# Tier 2: Fast Multilingual (Parakeet 0.6B via ONNX) - default: 24 EU languages
+ENV TIER2_MODEL=nvidia/parakeet-tdt-0.6b-v3
+ENV TIER2_LANGUAGES=bg,hr,cs,da,nl,et,fi,fr,de,el,hu,it,lv,lt,mt,pl,pt,ro,sk,sl,es,sv,ru,uk
+
+# Tier 3: Catch-all (Whisper) - handles all other languages
+ENV TIER3_MODEL=openai/whisper-large-v3-turbo
+
+# ============================================================================
+# Efficiency Thresholds
+# ============================================================================
+ENV SHORT_AUDIO_THRESHOLD_SEC=300
+ENV LOCAL_ATTENTION_THRESHOLD_SEC=1440
+
+# ============================================================================
+# Micro-Batching Configuration
+# ============================================================================
+ENV BATCH_TIMEOUT_MS=15.0
+ENV MAX_BATCH_SIZE=4
+ENV BATCH_CLEANUP_FREQUENCY=1
+
+# ============================================================================
+# Language Detection Configuration
+# ============================================================================
+ENV LANGUAGE_DETECTION_MODEL=large-v3-turbo
+ENV PRIMARY_LANGUAGE_DETECTOR=whisper
+ENV SECONDARY_LANGUAGE_DETECTOR=voxlingua
+ENV VOXLINGUA_CONFIDENCE_THRESHOLD=0.90
+ENV WHISPER_CONFIDENCE_THRESHOLD=0.70
+ENV MIN_LANGUAGE_CONFIDENCE=0.70
+
+# ============================================================================
+# Tier 2 Backend Configuration - ONNX FP16
+# ============================================================================
+ENV TIER2_BACKEND=onnx
+ENV TIER2_PRECISION=fp16
+ENV TIER2_ONNX_MODEL_PATH=/app/models/parakeet
+ENV TIER2_AUTO_DOWNLOAD=false
+
+# ============================================================================
+# PyTorch CUDA Memory Configuration
+# ============================================================================
+ENV PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+
+# ============================================================================
+# Model Pre-download
+# ============================================================================
+
+# Download FP16 ONNX Parakeet models (1.25GB total vs 2.4GB for NeMo)
+RUN mkdir -p /app/models/parakeet && \
+    python3 -c "from huggingface_hub import hf_hub_download; \
+hf_hub_download('grikdotnet/parakeet-tdt-0.6b-fp16', 'encoder-model.fp16.onnx', local_dir='/app/models/parakeet'); \
+hf_hub_download('grikdotnet/parakeet-tdt-0.6b-fp16', 'decoder_joint-model.fp16.onnx', local_dir='/app/models/parakeet'); \
+hf_hub_download('istupakov/parakeet-tdt-0.6b-v3-onnx', 'config.json', local_dir='/app/models/parakeet'); \
+hf_hub_download('istupakov/parakeet-tdt-0.6b-v3-onnx', 'vocab.txt', local_dir='/app/models/parakeet'); \
+hf_hub_download('istupakov/parakeet-tdt-0.6b-v3-onnx', 'nemo128.onnx', local_dir='/app/models/parakeet')"
+
+# Cache Whisper models (still needed for language detection and non-Parakeet languages)
+RUN python3 -c "from transformers import WhisperProcessor, WhisperForConditionalGeneration; \
+WhisperProcessor.from_pretrained('openai/whisper-tiny'); \
+WhisperForConditionalGeneration.from_pretrained('openai/whisper-tiny')"
+
+RUN python3 -c "from transformers import WhisperProcessor, WhisperForConditionalGeneration; \
+WhisperProcessor.from_pretrained('openai/whisper-large-v3-turbo'); \
+WhisperForConditionalGeneration.from_pretrained('openai/whisper-large-v3-turbo')"
+
+# Cache VoxLingua107 model
+RUN python3 -c "from speechbrain.inference.classifiers import EncoderClassifier; \
+EncoderClassifier.from_hparams(source='speechbrain/lang-id-voxlingua107-ecapa', savedir='tmp/voxlingua')"
+
+WORKDIR /app
+
+# Copy modular architecture (includes server.py and banner.py)
+COPY blitz/ /app/blitz/
+COPY scripts/ /app/scripts/
+
+# Use integrated server with modular architecture
+CMD ["uvicorn", "blitz.server:app", "--host", "0.0.0.0", "--port", "8000"]

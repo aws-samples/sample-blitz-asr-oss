@@ -1,0 +1,183 @@
+digraph BlitzArchitecture {
+    rankdir=TB;
+    compound=true;
+    bgcolor="white";
+    fontname="Helvetica";
+    nodesep=0.55;
+    ranksep=0.75;
+    splines=spline;
+    newrank=true;
+    pad="0.3,0.2";
+
+    node [
+        shape=box,
+        style="rounded,filled",
+        fontname="Helvetica",
+        fontsize=11,
+        margin="0.22,0.14",
+        penwidth=1.2,
+    ];
+    edge [
+        fontname="Helvetica",
+        fontsize=9,
+        color="#4a4a4a",
+        penwidth=1.1,
+    ];
+
+    // ========== Layer 1: Clients ==========
+    subgraph cluster_client {
+        label="Clients";
+        style="rounded,filled";
+        fillcolor="#f5f5f5";
+        color="#c8c8c8";
+        fontsize=12;
+        fontname="Helvetica-Bold";
+        margin=18;
+        labelloc="t";
+
+        http_client [label="HTTP client", fillcolor="#e8eef7", color="#6a8bc6"];
+        s3_upload   [label="S3 upload", fillcolor="#e8eef7", color="#6a8bc6"];
+    }
+
+    // ========== Layer 2: Transport ==========
+    subgraph cluster_transport {
+        label="Transport layer";
+        style="rounded,filled";
+        fillcolor="#fbfbfb";
+        color="#c8c8c8";
+        fontsize=12;
+        fontname="Helvetica-Bold";
+        margin=18;
+        labelloc="t";
+
+        fastapi     [label="FastAPI app\nblitz/server.py", fillcolor="#e8f3ea", color="#5ba06d"];
+        eventbridge [label="EventBridge\n-> AWS Batch job", fillcolor="#e8f3ea", color="#5ba06d"];
+    }
+
+    // ========== Layer 3: Ingress ==========
+    subgraph cluster_ingress {
+        label="Ingress & pre-processing";
+        style="rounded,filled";
+        fillcolor="#fbfbfb";
+        color="#c8c8c8";
+        fontsize=12;
+        fontname="Helvetica-Bold";
+        margin=18;
+        labelloc="t";
+
+        bounded [label="Bounded upload reader\nMAX_UPLOAD_BYTES", fillcolor="#fff3df", color="#d19a4a"];
+        loader  [label="load_audio_file\nsoundfile + ffmpeg fallback", fillcolor="#fff3df", color="#d19a4a"];
+        batch_job [label="blitz/batch/transcribe_job.py\nchunked long-form", fillcolor="#fff3df", color="#d19a4a"];
+    }
+
+    // ========== Layer 4: Detection ==========
+    subgraph cluster_detect {
+        label="Detection layer";
+        style="rounded,filled";
+        fillcolor="#fbfbfb";
+        color="#c8c8c8";
+        fontsize=12;
+        fontname="Helvetica-Bold";
+        margin=18;
+        labelloc="t";
+
+        vad     [label="Silero VAD\nsilence gate", fillcolor="#f3e8f1", color="#a05b9c"];
+        langdet [label="Language detection\nWhisper-tiny (primary)\nVoxLingua107 (fallback)", fillcolor="#f3e8f1", color="#a05b9c"];
+    }
+
+    // ========== Layer 5: Routing ==========
+    router [
+        label="Tier router  (by detected language)",
+        shape=hexagon,
+        style="filled",
+        fillcolor="#fef4c4",
+        color="#b89b1a",
+        fontsize=12,
+    ];
+
+    // ========== Layer 6: Inference ==========
+    subgraph cluster_inference {
+        label="Inference layer  —  model tiers";
+        style="rounded,filled";
+        fillcolor="#fbfbfb";
+        color="#c8c8c8";
+        fontsize=12;
+        fontname="Helvetica-Bold";
+        margin=18;
+        labelloc="t";
+
+        t1 [label="Tier 1\nparakeet-tdt_ctc-110m\nEnglish (fastest)", fillcolor="#e8f0f8", color="#4d7fb2"];
+        t2 [label="Tier 2\nparakeet-tdt-0.6b-v3\n25 EU languages\nbf16 / FP16-ONNX", fillcolor="#e8f0f8", color="#4d7fb2"];
+        t3 [label="Tier 3\nwhisper-large-v3-turbo\n99+ languages (catch-all)", fillcolor="#e8f0f8", color="#4d7fb2"];
+    }
+
+    // ========== Layer 7: Batching ==========
+    subgraph cluster_batch {
+        label="Micro-batching layer  (blitz/services/batch.py)";
+        style="rounded,filled";
+        fillcolor="#fbfbfb";
+        color="#c8c8c8";
+        fontsize=12;
+        fontname="Helvetica-Bold";
+        margin=18;
+        labelloc="t";
+
+        queue [label="Shared asyncio.Queue", shape=cylinder, fillcolor="#f0e8f7", color="#8063b0"];
+        w1 [label="tier1 worker", fillcolor="#f0e8f7", color="#8063b0"];
+        w2 [label="tier2 worker", fillcolor="#f0e8f7", color="#8063b0"];
+        w3 [label="tier3 worker", fillcolor="#f0e8f7", color="#8063b0"];
+    }
+
+    // ========== Layer 8: Response + Storage ==========
+    subgraph cluster_out {
+        label="Response & storage";
+        style="rounded,filled";
+        fillcolor="#fbfbfb";
+        color="#c8c8c8";
+        fontsize=12;
+        fontname="Helvetica-Bold";
+        margin=18;
+        labelloc="t";
+
+        formatter [label="Response formatter\nJSON / SRT / VTT", fillcolor="#e8f3f1", color="#4f9a8d"];
+        s3_out    [label="S3 output bucket", shape=folder, fillcolor="#f5eadf", color="#a07030"];
+    }
+
+    // Hidden rank anchors force clean top->bottom progression
+    { rank=same; http_client; s3_upload; }
+    { rank=same; fastapi; eventbridge; }
+    { rank=same; bounded; batch_job; }
+    { rank=same; t1; t2; t3; }
+    { rank=same; w1; w2; w3; }
+    { rank=same; formatter; s3_out; }
+
+    // ========== Request-time flow (solid) ==========
+    http_client -> fastapi;
+    fastapi -> bounded;
+    bounded -> loader;
+    loader -> vad;
+    vad -> langdet [label="speech"];
+    vad -> formatter [label="silent", style=dashed, constraint=false];
+    langdet -> router;
+    router -> t1 [label="en"];
+    router -> t2 [label="EU"];
+    router -> t3 [label="other"];
+    t1 -> queue;
+    t2 -> queue;
+    t3 -> queue;
+    queue -> w1;
+    queue -> w2;
+    queue -> w3;
+    w1 -> formatter;
+    w2 -> formatter;
+    w3 -> formatter;
+    formatter -> http_client [label="response", constraint=false, style=dashed];
+
+    // ========== Batch-time flow (dashed) ==========
+    s3_upload -> eventbridge [style=dashed];
+    eventbridge -> batch_job [style=dashed];
+    batch_job -> loader [style=dashed];
+    w1 -> s3_out [style=dashed, constraint=false];
+    w2 -> s3_out [style=dashed, constraint=false];
+    w3 -> s3_out [style=dashed, constraint=false];
+}
