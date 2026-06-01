@@ -57,3 +57,12 @@ tests/fixtures/**/*.flac
 tests/fixtures/**/*.m4a
 tests/fixtures/**/*.ogg
 tests/fixtures/**/*.opus
+
+# Models (too large for git)
+models/
+*.nemo
+*.onnx
+*.safetensors
+
+# Docker
+blitz-models.tar.gz

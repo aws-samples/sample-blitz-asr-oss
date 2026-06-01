@@ -1,0 +1,34 @@
+# =============================================================================
+# Prometheus Configuration for Blitz ASR
+# =============================================================================
+# Deploy alongside your Blitz container to scrape metrics.
+#
+# Usage:
+#   docker run -d -p 9090:9090 \
+#     -v $(pwd)/observability/prometheus.yml:/etc/prometheus/prometheus.yml \
+#     prom/prometheus
+#
+# Then access Prometheus UI at http://localhost:9090
+
+global:
+  scrape_interval: 15s      # Scrape every 15 seconds
+  evaluation_interval: 15s  # Evaluate rules every 15 seconds
+
+scrape_configs:
+  - job_name: 'blitz-asr'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['blitz:8000']  # Docker service name, or use IP:port
+        labels:
+          instance_type: 'g6.xlarge'
+          environment: 'dev'
+
+  # Optional: Node exporter for host-level metrics
+  # - job_name: 'node'
+  #   static_configs:
+  #     - targets: ['node-exporter:9100']
+
+  # Optional: NVIDIA DCGM exporter for detailed GPU metrics
+  # - job_name: 'dcgm'
+  #   static_configs:
+  #     - targets: ['dcgm-exporter:9400']
