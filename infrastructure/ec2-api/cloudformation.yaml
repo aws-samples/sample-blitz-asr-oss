@@ -1,0 +1,544 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Blitz ASR - GPU EC2 instance for real-time HTTP API transcription'
+
+# ============================================================================
+# Parameters
+# ============================================================================
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+    Description: Environment name
+
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC for the EC2 instance
+
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: Public subnet with internet gateway access (for automatic setup)
+
+  InstanceType:
+    Type: String
+    Default: g6.xlarge
+    AllowedValues:
+      - g6.xlarge    # NVIDIA L4, 24GB VRAM, 4 vCPU, 16GB RAM
+      - g6.2xlarge   # NVIDIA L4, 24GB VRAM, 8 vCPU, 32GB RAM
+      - g5.xlarge    # NVIDIA A10G, 24GB VRAM, 4 vCPU, 16GB RAM
+      - g5.2xlarge   # NVIDIA A10G, 24GB VRAM, 8 vCPU, 32GB RAM
+    Description: GPU instance type (L4 or A10G recommended)
+
+  AmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/deep-learning/amazon-linux-2023/gpu/pytorch/2.11/latest
+    Description: |
+      Deep Learning AMI (Amazon Linux 2023, GPU, PyTorch).
+      Uses SSM parameter for latest version. To pin a specific AMI,
+      replace with explicit AMI ID (e.g., ami-0123456789abcdef0).
+
+  KeyPairName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: EC2 key pair for SSH access (required for troubleshooting)
+
+  AllowedSSHCIDR:
+    Type: String
+    Default: 0.0.0.0/0
+    AllowedPattern: '^(\d{1,3}\.){3}\d{1,3}/\d{1,2}$'
+    Description: CIDR block allowed to SSH (default 0.0.0.0/0 - restrict in production)
+
+  AllowedAPICIDR:
+    Type: String
+    Default: 0.0.0.0/0
+    AllowedPattern: '^(\d{1,3}\.){3}\d{1,3}/\d{1,2}$'
+    Description: CIDR block allowed to access API on port 8000 (default 0.0.0.0/0)
+
+  EBSVolumeSize:
+    Type: Number
+    Default: 150
+    MinValue: 100
+    MaxValue: 500
+    Description: Root EBS volume size in GB (models require ~30GB, Docker images ~20GB)
+
+  EnableAutoShutdown:
+    Type: String
+    Default: 'No'
+    AllowedValues: ['Yes', 'No']
+    Description: Auto-shutdown instance at 11 PM daily to save costs (dev/staging only)
+
+  BlitzDockerImage:
+    Type: String
+    Default: ''
+    Description: |
+      Optional: Pre-built Docker image URI (e.g., 123456789012.dkr.ecr.us-east-1.amazonaws.com/blitz:latest).
+      If empty, will build from source during instance launch (adds 20-30 min startup time).
+
+  Tier2Backend:
+    Type: String
+    Default: nemo
+    AllowedValues: [nemo, onnx]
+    Description: Tier 2 (Parakeet 0.6B) backend (nemo = PyTorch, onnx = ONNX Runtime)
+
+  Tier2Precision:
+    Type: String
+    Default: bfloat16
+    AllowedValues: [fp32, bfloat16, fp16]
+    Description: Tier 2 model precision (bfloat16 recommended for best speed/accuracy)
+
+  EnableAuth:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: Enable API key authentication (recommended for production)
+
+  ApiKeys:
+    Type: String
+    Default: ''
+    NoEcho: true
+    Description: |
+      JSON map of API keys (e.g., {"client1": ["blitz_abc123"], "client2": ["blitz_def456"]}).
+      Generate with: python3 -c "import secrets; print(f'blitz_{secrets.token_urlsafe(32)}')"
+      Leave empty if EnableAuth=false.
+
+  RateLimitRPM:
+    Type: Number
+    Default: 60
+    MinValue: 10
+    MaxValue: 1000
+    Description: Rate limit (requests per minute per client)
+
+# ============================================================================
+# Conditions
+# ============================================================================
+Conditions:
+  IsProd: !Equals [!Ref Environment, prod]
+  IsDevOrStaging: !Not [!Condition IsProd]
+  EnableAutoShutdownCond: !And
+    - !Equals [!Ref EnableAutoShutdown, 'Yes']
+    - !Condition IsDevOrStaging
+  UsePrebuiltImage: !Not [!Equals [!Ref BlitzDockerImage, '']]
+
+# ============================================================================
+# Resources
+# ============================================================================
+Resources:
+
+  # --------------------------------------------------------------------------
+  # IAM Role and Instance Profile
+  # --------------------------------------------------------------------------
+  EC2InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'blitz-ec2-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        - PolicyName: CloudWatchLogs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:DescribeLogStreams
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/ec2/blitz-*'
+        - PolicyName: ECRAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecr:GetAuthorizationToken
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                Resource: '*'
+        - PolicyName: SecretsManagerAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:blitz-*'
+
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: !Sub 'blitz-ec2-profile-${Environment}'
+      Roles:
+        - !Ref EC2InstanceRole
+
+  # --------------------------------------------------------------------------
+  # Security Group
+  # --------------------------------------------------------------------------
+  EC2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub 'blitz-api-sg-${Environment}'
+      GroupDescription: Security group for Blitz ASR API server
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        # SSH access
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref AllowedSSHCIDR
+          Description: SSH access for administration
+        # HTTP API access
+        - IpProtocol: tcp
+          FromPort: 8000
+          ToPort: 8000
+          CidrIp: !Ref AllowedAPICIDR
+          Description: Blitz API endpoint (FastAPI)
+        # Optional: Prometheus metrics
+        - IpProtocol: tcp
+          FromPort: 9090
+          ToPort: 9090
+          CidrIp: !Ref AllowedAPICIDR
+          Description: Prometheus metrics (optional, for monitoring stack)
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic
+      Tags:
+        - Key: Name
+          Value: !Sub 'blitz-api-sg-${Environment}'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: blitz-asr
+
+  # --------------------------------------------------------------------------
+  # CloudWatch Log Group
+  # --------------------------------------------------------------------------
+  EC2LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/ec2/blitz-api-${Environment}'
+      RetentionInDays: !If [IsProd, 90, 30]
+
+  # --------------------------------------------------------------------------
+  # EC2 Instance
+  # --------------------------------------------------------------------------
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      ImageId: !Ref AmiId
+      KeyName: !Ref KeyPairName
+      IamInstanceProfile: !Ref EC2InstanceProfile
+      SubnetId: !Ref SubnetId
+      SecurityGroupIds:
+        - !Ref EC2SecurityGroup
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: !Ref EBSVolumeSize
+            VolumeType: gp3
+            Iops: 3000
+            Throughput: 125
+            DeleteOnTermination: true
+            Encrypted: true
+      MetadataOptions:
+        HttpTokens: required  # IMDSv2 only — blocks SSRF-to-credentials
+        HttpPutResponseHopLimit: 1
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -euxo pipefail
+
+          # ================================================================
+          # Blitz ASR - EC2 Instance Setup Script
+          # ================================================================
+
+          exec > >(tee /var/log/blitz-setup.log)
+          exec 2>&1
+
+          echo "=== Starting Blitz ASR setup at $(date) ==="
+
+          # ----------------------------------------------------------------
+          # System Configuration
+          # ----------------------------------------------------------------
+          echo "[1/8] Updating system packages..."
+          dnf update -y
+
+          # Install dependencies
+          echo "[2/8] Installing Docker and dependencies..."
+          dnf install -y docker git jq amazon-cloudwatch-agent
+
+          # Configure Docker
+          systemctl enable docker
+          systemctl start docker
+          usermod -aG docker ec2-user
+
+          # Configure Docker daemon for GPU and logging
+          cat > /etc/docker/daemon.json <<'DOCKEREOF'
+          {
+            "default-runtime": "nvidia",
+            "runtimes": {
+              "nvidia": {
+                "path": "nvidia-container-runtime",
+                "runtimeArgs": []
+              }
+            },
+            "log-driver": "json-file",
+            "log-opts": {
+              "max-size": "100m",
+              "max-file": "5"
+            }
+          }
+          DOCKEREOF
+          systemctl restart docker
+
+          # ----------------------------------------------------------------
+          # CloudWatch Agent Setup
+          # ----------------------------------------------------------------
+          echo "[3/8] Configuring CloudWatch Agent..."
+          cat > /opt/aws/amazon-cloudwatch-agent/etc/config.json <<'CWEOF'
+          {
+            "logs": {
+              "logs_collected": {
+                "files": {
+                  "collect_list": [
+                    {
+                      "file_path": "/var/log/blitz-setup.log",
+                      "log_group_name": "${EC2LogGroup}",
+                      "log_stream_name": "{instance_id}/setup"
+                    },
+                    {
+                      "file_path": "/var/log/blitz-api.log",
+                      "log_group_name": "${EC2LogGroup}",
+                      "log_stream_name": "{instance_id}/api"
+                    }
+                  ]
+                }
+              }
+            },
+            "metrics": {
+              "namespace": "Blitz/EC2",
+              "metrics_collected": {
+                "cpu": {
+                  "measurement": [{"name": "cpu_usage_idle"}],
+                  "metrics_collection_interval": 60
+                },
+                "disk": {
+                  "measurement": [{"name": "used_percent"}],
+                  "metrics_collection_interval": 60,
+                  "resources": ["*"]
+                },
+                "mem": {
+                  "measurement": [{"name": "mem_used_percent"}],
+                  "metrics_collection_interval": 60
+                }
+              }
+            }
+          }
+          CWEOF
+
+          /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+            -a fetch-config \
+            -m ec2 \
+            -s \
+            -c file:/opt/aws/amazon-cloudwatch-agent/etc/config.json
+
+          # ----------------------------------------------------------------
+          # Application Setup
+          # ----------------------------------------------------------------
+          echo "[4/8] Setting up Blitz application directory..."
+          mkdir -p /opt/blitz
+          cd /opt/blitz
+
+          # Clone repository
+          echo "[5/8] Cloning Blitz repository..."
+          git clone https://github.com/anandmandilwar/blitz-oss.git .
+
+          # Create .env file
+          echo "[6/8] Creating environment configuration..."
+          cat > .env <<'ENVEOF'
+          # Model Configuration
+          TIER2_BACKEND=${Tier2Backend}
+          TIER2_PRECISION=${Tier2Precision}
+
+          # API Configuration
+          BLITZ_HOST=0.0.0.0
+          BLITZ_PORT=8000
+          BLITZ_WORKERS=1
+
+          # Security
+          BLITZ_AUTH_ENABLED=${EnableAuth}
+          BLITZ_API_KEYS=${ApiKeys}
+          BLITZ_RATE_LIMIT_ENABLED=true
+          BLITZ_RATE_LIMIT_RPM=${RateLimitRPM}
+          BLITZ_CORS_ORIGINS=*
+
+          # GPU Configuration
+          CUDA_VISIBLE_DEVICES=0
+
+          # Performance
+          BATCH_TIMEOUT_MS=15
+          MAX_BATCH_SIZE=4
+
+          # Logging
+          LOG_LEVEL=INFO
+          LOG_FORMAT=json
+          ENVEOF
+
+          chown -R ec2-user:ec2-user /opt/blitz
+
+          # ----------------------------------------------------------------
+          # Docker Container Deployment
+          # ----------------------------------------------------------------
+          echo "[7/8] Deploying Blitz container..."
+
+          if [ "${UsePrebuiltImage}" == "true" ]; then
+            echo "Using pre-built image: ${BlitzDockerImage}"
+            aws ecr get-login-password --region ${AWS::Region} | \
+              docker login --username AWS --password-stdin ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com
+            docker pull ${BlitzDockerImage}
+            IMAGE_NAME="${BlitzDockerImage}"
+          else
+            echo "Building Docker image from source (this takes 20-30 minutes)..."
+            docker build -t blitz:latest -f Dockerfile .
+            IMAGE_NAME="blitz:latest"
+          fi
+
+          # Start container
+          echo "Starting Blitz container..."
+          docker run -d \
+            --name blitz \
+            --restart unless-stopped \
+            --gpus all \
+            --ipc=host \
+            --ulimit memlock=-1 \
+            --ulimit stack=67108864 \
+            --shm-size=2g \
+            -p 8000:8000 \
+            -p 9090:9090 \
+            --env-file /opt/blitz/.env \
+            -v /opt/blitz/models:/root/.cache/huggingface:rw \
+            -v /var/log:/app/logs:rw \
+            $IMAGE_NAME 2>&1 | tee /var/log/blitz-api.log
+
+          # Wait for service to be healthy
+          echo "Waiting for Blitz API to be ready..."
+          for i in {1..60}; do
+            if curl -s http://localhost:8000/health > /dev/null; then
+              echo "✓ Blitz API is healthy"
+              break
+            fi
+            echo "Waiting for API... ($i/60)"
+            sleep 10
+          done
+
+          # ----------------------------------------------------------------
+          # Auto-Shutdown Configuration (dev/staging only)
+          # ----------------------------------------------------------------
+          if [ "${EnableAutoShutdownCond}" == "true" ]; then
+            echo "[8/8] Configuring auto-shutdown at 11 PM..."
+            cat > /usr/local/bin/blitz-shutdown.sh <<'SHUTDOWNEOF'
+          #!/bin/bash
+          # Auto-shutdown script for cost savings (dev/staging only)
+          echo "$(date): Auto-shutdown triggered" >> /var/log/blitz-shutdown.log
+          /usr/bin/docker stop blitz
+          /usr/sbin/shutdown -h now
+          SHUTDOWNEOF
+            chmod +x /usr/local/bin/blitz-shutdown.sh
+
+            # Schedule shutdown at 11 PM daily
+            echo "0 23 * * * root /usr/local/bin/blitz-shutdown.sh" > /etc/cron.d/blitz-shutdown
+          fi
+
+          echo "=== Blitz ASR setup completed at $(date) ==="
+          echo "API available at: http://$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4):8000"
+          echo "Health check: curl http://$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4):8000/health"
+
+      Tags:
+        - Key: Name
+          Value: !Sub 'blitz-api-${Environment}'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: blitz-asr
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  # --------------------------------------------------------------------------
+  # Elastic IP (Optional but recommended for static endpoint)
+  # --------------------------------------------------------------------------
+  ElasticIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      InstanceId: !Ref EC2Instance
+      Tags:
+        - Key: Name
+          Value: !Sub 'blitz-api-eip-${Environment}'
+        - Key: Environment
+          Value: !Ref Environment
+
+# ============================================================================
+# Outputs
+# ============================================================================
+Outputs:
+  InstanceId:
+    Description: EC2 Instance ID
+    Value: !Ref EC2Instance
+    Export:
+      Name: !Sub '${AWS::StackName}-InstanceId'
+
+  PublicIP:
+    Description: Elastic IP address for API access
+    Value: !Ref ElasticIP
+    Export:
+      Name: !Sub '${AWS::StackName}-PublicIP'
+
+  ApiEndpoint:
+    Description: Blitz API endpoint URL
+    Value: !Sub 'http://${ElasticIP}:8000'
+    Export:
+      Name: !Sub '${AWS::StackName}-ApiEndpoint'
+
+  HealthCheckUrl:
+    Description: Health check endpoint
+    Value: !Sub 'http://${ElasticIP}:8000/health'
+
+  MetricsUrl:
+    Description: Prometheus metrics endpoint
+    Value: !Sub 'http://${ElasticIP}:8000/metrics'
+
+  SSHCommand:
+    Description: SSH command to connect to instance
+    Value: !Sub 'ssh -i ${KeyPairName}.pem ec2-user@${ElasticIP}'
+
+  LogGroupName:
+    Description: CloudWatch log group for instance logs
+    Value: !Ref EC2LogGroup
+    Export:
+      Name: !Sub '${AWS::StackName}-LogGroup'
+
+  SecurityGroupId:
+    Description: Security group ID
+    Value: !Ref EC2SecurityGroup
+    Export:
+      Name: !Sub '${AWS::StackName}-SecurityGroup'
+
+  UsageInstructions:
+    Description: Quick start guide
+    Value: !Sub |
+      1. Wait 5-10 minutes for instance initialization (30+ min if building from source)
+      2. Check health: curl http://${ElasticIP}:8000/health
+      3. Transcribe: curl -X POST http://${ElasticIP}:8000/transcribe -F "file=@audio.mp3" -F "format=json"
+      4. View logs: aws logs tail /aws/ec2/blitz-api-${Environment} --follow
+      5. SSH access: ssh -i ${KeyPairName}.pem ec2-user@${ElasticIP}
+      6. Container logs: docker logs -f blitz

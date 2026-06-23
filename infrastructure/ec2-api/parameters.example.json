@@ -1,0 +1,62 @@
+[
+  {
+    "ParameterKey": "Environment",
+    "ParameterValue": "dev"
+  },
+  {
+    "ParameterKey": "VpcId",
+    "ParameterValue": "vpc-0123456789abcdef0"
+  },
+  {
+    "ParameterKey": "SubnetId",
+    "ParameterValue": "subnet-0123456789abcdef0"
+  },
+  {
+    "ParameterKey": "InstanceType",
+    "ParameterValue": "g6.xlarge"
+  },
+  {
+    "ParameterKey": "KeyPairName",
+    "ParameterValue": "my-keypair"
+  },
+  {
+    "ParameterKey": "AllowedSSHCIDR",
+    "ParameterValue": "0.0.0.0/0"
+  },
+  {
+    "ParameterKey": "AllowedAPICIDR",
+    "ParameterValue": "0.0.0.0/0"
+  },
+  {
+    "ParameterKey": "EBSVolumeSize",
+    "ParameterValue": "150"
+  },
+  {
+    "ParameterKey": "EnableAutoShutdown",
+    "ParameterValue": "No"
+  },
+  {
+    "ParameterKey": "BlitzDockerImage",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "Tier2Backend",
+    "ParameterValue": "nemo"
+  },
+  {
+    "ParameterKey": "Tier2Precision",
+    "ParameterValue": "bfloat16"
+  },
+  {
+    "ParameterKey": "EnableAuth",
+    "ParameterValue": "false"
+  },
+  {
+    "ParameterKey": "ApiKeys",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "RateLimitRPM",
+    "ParameterValue": "60"
+  }
+]

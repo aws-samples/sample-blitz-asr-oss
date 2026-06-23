@@ -2,6 +2,12 @@ FROM nvcr.io/nvidia/pytorch:24.02-py3
 
 # Build argument to enable ONNX backend (optional)
 # Build with: docker build --build-arg ENABLE_ONNX=true -t blitz-onnx .
+
+# Build argument to skip model downloads (use when mounting pre-cached models)
+# Build with: docker build --build-arg SKIP_MODEL_DOWNLOAD=true -t blitz:latest .
+# Then run with: -v ~/.cache/huggingface:/root/.cache/huggingface
+# See docs/DEPLOYMENT.md "Path 2: Pre-cached Deploy" for details
+ARG SKIP_MODEL_DOWNLOAD=false
 ARG ENABLE_ONNX=false
 
 # System deps (FFmpeg included)
@@ -187,27 +193,37 @@ ENV TIER2_AUTO_DOWNLOAD=true
 
 # Pre-download models into the image
 # Cache Parakeet 0.6B model during build (multilingual, 25 European languages)
-RUN python3 -c "from nemo.collections.asr.models import ASRModel; ASRModel.from_pretrained('nvidia/parakeet-tdt-0.6b-v3')"
+RUN if [ "$SKIP_MODEL_DOWNLOAD" != "true" ]; then \
+    python3 -c "from nemo.collections.asr.models import ASRModel; ASRModel.from_pretrained('nvidia/parakeet-tdt-0.6b-v3')"; \
+    fi
 
 # Cache Parakeet CTC-110M model during build (English fast mode, 51% faster)
-RUN python3 -c "from nemo.collections.asr.models import ASRModel; ASRModel.from_pretrained('nvidia/parakeet-tdt_ctc-110m')"
+RUN if [ "$SKIP_MODEL_DOWNLOAD" != "true" ]; then \
+    python3 -c "from nemo.collections.asr.models import ASRModel; ASRModel.from_pretrained('nvidia/parakeet-tdt_ctc-110m')"; \
+    fi
 
 # Cache Whisper tiny (processor + model) during build
 # Used for language detection if LANGUAGE_DETECTION_MODEL=tiny
-RUN python3 -c "from transformers import WhisperProcessor, WhisperForConditionalGeneration; \
-WhisperProcessor.from_pretrained('openai/whisper-tiny'); \
-WhisperForConditionalGeneration.from_pretrained('openai/whisper-tiny')"
+RUN if [ "$SKIP_MODEL_DOWNLOAD" != "true" ]; then \
+    python3 -c "from transformers import WhisperProcessor, WhisperForConditionalGeneration; \
+    WhisperProcessor.from_pretrained('openai/whisper-tiny'); \
+    WhisperForConditionalGeneration.from_pretrained('openai/whisper-tiny')"; \
+    fi
 
 # Cache Whisper large-v3-turbo (processor + model) during build
 # Used for transcription (always) and language detection (if LANGUAGE_DETECTION_MODEL=large-v3-turbo)
-RUN python3 -c "from transformers import WhisperProcessor, WhisperForConditionalGeneration; \
-WhisperProcessor.from_pretrained('openai/whisper-large-v3-turbo'); \
-WhisperForConditionalGeneration.from_pretrained('openai/whisper-large-v3-turbo')"
+RUN if [ "$SKIP_MODEL_DOWNLOAD" != "true" ]; then \
+    python3 -c "from transformers import WhisperProcessor, WhisperForConditionalGeneration; \
+    WhisperProcessor.from_pretrained('openai/whisper-large-v3-turbo'); \
+    WhisperForConditionalGeneration.from_pretrained('openai/whisper-large-v3-turbo')"; \
+    fi
 
 # Cache VoxLingua107 model during build (used for fallback language detection)
 # 107 languages, trained on VoxPopuli + CommonVoice
-RUN python3 -c "from speechbrain.inference.classifiers import EncoderClassifier; \
-EncoderClassifier.from_hparams(source='speechbrain/lang-id-voxlingua107-ecapa', savedir='tmp/voxlingua')"
+RUN if [ "$SKIP_MODEL_DOWNLOAD" != "true" ]; then \
+    python3 -c "from speechbrain.inference.classifiers import EncoderClassifier; \
+    EncoderClassifier.from_hparams(source='speechbrain/lang-id-voxlingua107-ecapa', savedir='tmp/voxlingua')"; \
+    fi
 
 # ============================================================================
 # Optional: ONNX Runtime for FP16 Parakeet Models

@@ -10,7 +10,7 @@ from pathlib import Path
 # =============================================================================
 # Configuration
 # =============================================================================
-BLITZ_API = "http://35.175.181.126:8000"
+BLITZ_API = "http://34.207.213.111:8000"
 
 st.set_page_config(page_title="Blitz ASR", page_icon="🎙️", layout="wide")
 

@@ -2,7 +2,7 @@ import streamlit as st
 import requests
 
 # Replace with your EC2 public IP
-BLITZ_API = "http://35.175.181.126:8000"
+BLITZ_API = "http://34.207.213.111:8000"
 
 st.title("🎙️ Blitz Transcription")
 st.markdown("GPU-accelerated speech-to-text with intelligent model routing")
