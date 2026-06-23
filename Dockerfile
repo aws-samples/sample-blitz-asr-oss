@@ -1,13 +1,13 @@
-FROM nvcr.io/nvidia/pytorch:24.02-py3
-
-# Build argument to enable ONNX backend (optional)
-# Build with: docker build --build-arg ENABLE_ONNX=true -t blitz-onnx .
+FROM nvcr.io/nvidia/pytorch:24.12-py3
 
 # Build argument to skip model downloads (use when mounting pre-cached models)
 # Build with: docker build --build-arg SKIP_MODEL_DOWNLOAD=true -t blitz:latest .
 # Then run with: -v ~/.cache/huggingface:/root/.cache/huggingface
 # See docs/DEPLOYMENT.md "Path 2: Pre-cached Deploy" for details
 ARG SKIP_MODEL_DOWNLOAD=false
+
+# Build argument to enable ONNX backend (optional)
+# Build with: docker build --build-arg ENABLE_ONNX=true -t blitz-onnx .
 ARG ENABLE_ONNX=false
 
 # System deps (FFmpeg included)
@@ -27,9 +27,11 @@ RUN pip install --no-cache-dir \
     faster-whisper \
     "transformers[torch]" \
     sentencepiece \
-    torchaudio \
     torchmetrics \
     git+https://github.com/speechbrain/speechbrain.git@develop
+
+# Install torchaudio from PyTorch CUDA 12.6 index (matches container's CUDA)
+RUN pip install --no-cache-dir torchaudio --index-url https://download.pytorch.org/whl/cu126
 
 # Disable Flash Attention for better compatibility across GPU types
 RUN pip uninstall -y flash-attn flash_attn || true
@@ -188,10 +190,12 @@ ENV TIER2_AUTO_DOWNLOAD=true
 # - Health check: GET /health every 30s
 
 # ============================================================================
-# Model Pre-download
+# Model Pre-download (conditional)
 # ============================================================================
+# When SKIP_MODEL_DOWNLOAD=false (default): models are downloaded during build
+# When SKIP_MODEL_DOWNLOAD=true: skip downloads, mount pre-cached models at runtime
+#   via -v ~/.cache/huggingface:/root/.cache/huggingface
 
-# Pre-download models into the image
 # Cache Parakeet 0.6B model during build (multilingual, 25 European languages)
 RUN if [ "$SKIP_MODEL_DOWNLOAD" != "true" ]; then \
     python3 -c "from nemo.collections.asr.models import ASRModel; ASRModel.from_pretrained('nvidia/parakeet-tdt-0.6b-v3')"; \
@@ -248,6 +252,9 @@ hf_hub_download('istupakov/parakeet-tdt-0.6b-v3-onnx', 'vocab.txt', local_dir='/
 hf_hub_download('istupakov/parakeet-tdt-0.6b-v3-onnx', 'nemo128.onnx', local_dir='/app/models/parakeet')" && \
     echo "✅ FP16 ONNX models downloaded"; \
     fi
+
+# Fix torchaudio compatibility (ensure version matches container CUDA)
+RUN pip uninstall -y torchaudio && pip install --no-cache-dir torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/cu124
 
 WORKDIR /app
 # Copy modular architecture (includes server.py and banner.py)

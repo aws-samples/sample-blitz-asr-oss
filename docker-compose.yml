@@ -46,13 +46,14 @@ services:
     # Mount test fixtures for easy testing
     volumes:
       - ./tests/fixtures:/data:ro
+      - ~/.cache/huggingface:/root/.cache/huggingface
 
     # Load environment from .env file
     env_file:
       - .env
 
     # Recommended for long-running containers with large models
-    shm_size: '2gb'
+    shm_size: '8gb'
     ulimits:
       memlock: -1
       stack: 67108864
