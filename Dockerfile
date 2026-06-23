@@ -30,9 +30,6 @@ RUN pip install --no-cache-dir \
     torchmetrics \
     git+https://github.com/speechbrain/speechbrain.git@develop
 
-# Install torchaudio from PyTorch CUDA 12.6 index (matches container's CUDA)
-RUN pip install --no-cache-dir torchaudio --index-url https://download.pytorch.org/whl/cu126
-
 # Disable Flash Attention for better compatibility across GPU types
 RUN pip uninstall -y flash-attn flash_attn || true
 ENV HF_USE_FLASH_ATTENTION=0
@@ -43,6 +40,10 @@ RUN pip uninstall -y torchvision || true
 # Upgrade cuda-python so NeMo can use CUDA graphs with conditional nodes
 # (avoids "Found cuda-python 12.3.0rc4... at least version 12.3.0 is needed" warning)
 RUN /usr/bin/python3 -m pip install --no-cache-dir "cuda-python>=12.3.0"
+
+# Fix torchaudio: install version compatible with container's CUDA (12.6)
+# Must be done BEFORE model downloads (NeMo imports torchaudio during model loading)
+RUN pip uninstall -y torchaudio && pip install --no-cache-dir torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/cu124
 
 # ============================================================================
 # 3-Tier Model Routing Configuration
@@ -252,9 +253,6 @@ hf_hub_download('istupakov/parakeet-tdt-0.6b-v3-onnx', 'vocab.txt', local_dir='/
 hf_hub_download('istupakov/parakeet-tdt-0.6b-v3-onnx', 'nemo128.onnx', local_dir='/app/models/parakeet')" && \
     echo "✅ FP16 ONNX models downloaded"; \
     fi
-
-# Fix torchaudio compatibility (ensure version matches container CUDA)
-RUN pip uninstall -y torchaudio && pip install --no-cache-dir torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/cu124
 
 WORKDIR /app
 # Copy modular architecture (includes server.py and banner.py)

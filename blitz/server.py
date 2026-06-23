@@ -36,12 +36,27 @@ from blitz.utils.audio import get_audio_duration
 from blitz.utils.formatting import generate_srt_content, generate_vtt_content
 from blitz.utils.metrics import compute_cost_metrics
 from blitz.banner import print_banner, print_startup_info
+from blitz.observability.metrics import METRICS
 
 
 logger = logging.getLogger(__name__)
 
 # Create FastAPI app with integrated lifespan management
 app = create_app()
+
+# Diarization endpoint (separate from /transcribe)
+from blitz.diarize_endpoint import register_diarize_endpoint
+register_diarize_endpoint(app)
+
+# Observability: Prometheus metrics + structured logging + request tracing
+from blitz.observability import setup_metrics, setup_logging, ObservabilityMiddleware
+setup_logging(log_level="INFO", json_format=True)
+app.add_middleware(ObservabilityMiddleware)
+setup_metrics(app)
+
+# Security: API key auth + rate limiting + CORS
+from blitz.security.integration import integrate_security
+integrate_security(app)
 
 
 _UNSAFE_FILENAME_CHARS = re.compile(r'[\r\n"\\/]')
@@ -384,7 +399,19 @@ async def transcribe(
         transcribe_time_seconds = time.time() - transcribe_start
 
         # ---- Calculate metrics ----
+
         total_processing_time = time.time() - start_time
+
+        # Record observability metrics
+        try:
+            METRICS.transcriptions_total.labels(engine=engine, language=best_lang_code).inc()
+            METRICS.tier_routing_total.labels(tier=engine).inc()
+            METRICS.audio_duration_seconds.labels(engine=engine).observe(duration_sec)
+            METRICS.audio_minutes_processed.labels(engine=engine).inc(duration_sec / 60.0)
+            METRICS.real_time_factor.labels(engine=engine).observe(total_processing_time / duration_sec if duration_sec > 0 else 0)
+        except Exception as e:
+            import traceback; traceback.print_exc()
+
 
         metrics = calculate_processing_costs(
             total_processing_time,
