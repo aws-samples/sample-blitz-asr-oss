@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=42", "wheel", "pybind11"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ctc-forced-aligner"
+description = "Text to speech alignment using CTC forced alignment"
+license = { text = "CC-BY-NC 4.0" }
+authors = [
+  {name = "Mahmoud Ashraf", email = "hassouna97.ma@gmail.com"},]
+dynamic = ["version", "dependencies"]
+requires-python = ">= 3.10"
+
+[tool.setuptools.dynamic]
+version = {attr = "ctc_forced_aligner.__version__"}
+dependencies = {file = ["requirements.txt"]}
+
+[project.optional-dependencies]
+dev = ["ruff", "pre-commit", "pytest==7.*", "torchaudio"]
+
+[project.urls]
+repository = "https://github.com/MahmoudAshraf97/ctc-forced-aligner"
+
+[project.scripts]
+ctc-forced-aligner = "ctc_forced_aligner.align:cli"
+
+[tool.setuptools.package-data]
+"*" = [
+    "punctuations.lst",
+]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E203"]
+
+[tool.ruff.lint.per-file-ignores]
+"ctc_forced_aligner/__init__.py" = ["F401"]
+"tests/test_alignment.py" = ["E741"]
+
+[tool.ruff.lint.isort]
+lines-between-types = 1

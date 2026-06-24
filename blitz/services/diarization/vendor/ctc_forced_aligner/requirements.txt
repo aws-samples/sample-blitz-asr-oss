@@ -1,0 +1,6 @@
+uroman
+nltk
+torch
+torchcodec
+transformers>=4.34
+Unidecode
