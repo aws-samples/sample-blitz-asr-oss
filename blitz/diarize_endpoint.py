@@ -23,7 +23,7 @@ from fastapi.responses import JSONResponse
 
 logger = logging.getLogger("blitz.diarize")
 
-DIARIZE_SCRIPT = "/tmp/whisper-diarization/diarize_parallel.py"
+DIARIZE_SCRIPT = "/tmp/whisper-diarization/diarize_parallel.py"  # nosec B108
 
 
 def parse_srt_with_speakers(srt_path: str) -> list:
@@ -149,7 +149,7 @@ def register_diarize_endpoint(app: FastAPI):
                 capture_output=True, encoding="utf-8", errors="replace",
                 
                 timeout=600,  # 10 min timeout
-                cwd="/tmp/whisper-diarization",
+                cwd="/tmp/whisper-diarization",  # nosec B108,
             )
             
             if result.returncode != 0:

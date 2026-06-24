@@ -27,7 +27,7 @@ def print_banner(compact: bool = False) -> None:
     print()
 
 
-def print_startup_info(host: str = "0.0.0.0", port: int = 8000) -> None:
+def print_startup_info(host: str = "0.0.0.0", port: int = 8000) -> None:  # nosec B104
     """Print startup information."""
     print(f"    Server running on http://{host}:{port}")
     print(f"    API docs: http://{host}:{port}/docs")

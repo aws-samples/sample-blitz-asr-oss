@@ -3,6 +3,7 @@ import logging
 import multiprocessing as mp
 import os
 import re
+import subprocess
 
 import faster_whisper
 import torch
@@ -113,10 +114,18 @@ if __name__ == "__main__":
     if args.stemming:
         # Isolate vocals from the rest of the audio
 
-        return_code = os.system(
-            f"python -m demucs.separate -n htdemucs --two-stems=vocals "
-            f'"{args.audio}" -o "{temp_path}" --device "{args.device}"'
+# Below piece of code commented to address bandit finding ID B104
+        #return_code = os.system(
+        #    f"python -m demucs.separate -n htdemucs --two-stems=vocals "
+        #    f'"{args.audio}" -o "{temp_path}" --device "{args.device}"'
+        #)
+
+        result = subprocess.run(
+            ["python", "-m", "demucs.separate", "-n", "htdemucs", "--two-stems=vocals",
+             str(args.audio), "-o", str(temp_path), "--device", str(args.device)],
+            capture_output=True, text=True
         )
+        return_code = result.returncode
 
         if return_code != 0:
             logging.warning(

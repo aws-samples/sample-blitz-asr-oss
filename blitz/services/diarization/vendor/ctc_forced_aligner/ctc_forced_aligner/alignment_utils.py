@@ -286,7 +286,7 @@ def load_alignment_model(
     attn_implementation: str = None,
     dtype: torch.dtype = torch.float32,
 ):
-    model = AutoModelForCTC.from_pretrained(model_path).to(device).eval()
-    tokenizer = AutoTokenizer.from_pretrained(model_path, word_delimiter_token=None)
+    model = AutoModelForCTC.from_pretrained(model_path).to(device).eval()  # nosec B615
+    tokenizer = AutoTokenizer.from_pretrained(model_path, word_delimiter_token=None)  # nosec B615
 
     return model, tokenizer

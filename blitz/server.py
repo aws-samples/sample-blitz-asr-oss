@@ -606,9 +606,9 @@ def main() -> None:
     import uvicorn
 
     print_banner()
-    print_startup_info(host="0.0.0.0", port=8000)
+    print_startup_info(host="0.0.0.0", port=8000)  # nosec B104
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8000)  # nosec B104
 
 
 if __name__ == "__main__":

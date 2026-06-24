@@ -6,11 +6,13 @@ import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import re
 from pathlib import Path
+import os
 
 # =============================================================================
 # Configuration
 # =============================================================================
-BLITZ_API = "http://34.204.185.73:8000"
+
+BLITZ_API = os.environ.get("BLITZ_API", "http://localhost:8000")
 
 st.set_page_config(page_title="Blitz ASR", page_icon="🎙️", layout="wide")
 
@@ -69,7 +71,7 @@ with tab1:
         output_format = st.selectbox("Output format", ["json", "text", "srt", "vtt"])
         language_hint = st.text_input("Language hint (optional)", placeholder="e.g., en, fr, de")
     
-    if audio_file and st.button("🚀 Transcribe", type="primary", use_container_width=True, key="btn_transcribe"):
+    if audio_file and st.button("🚀 Transcribe", type="primary", width='stretch', key="btn_transcribe"):
         
         file_size_mb = len(audio_file.getvalue()) / (1024 * 1024)
         estimated_time = max(2.0, file_size_mb * 1.5)
@@ -127,11 +129,16 @@ with tab1:
             if output_format == "json":
                 data = result["response"].json()
                 
+                # Get processing metrics (nested structure)
+                proc_metrics = data['metrics'].get('processing_metrics', {})
+                processing_time = proc_metrics.get('processing_time_seconds', 0)
+                rtf = proc_metrics.get('real_time_factor', 0)
+
                 st.markdown(f"""
                 <div class="success-box">
-                    ✅ Transcribed <b>{data['duration_sec']:.1f}s</b> of audio in 
-                    <b>{data['metrics']['total_processing_time_sec']:.2f}s</b> 
-                    (RTF: {data['metrics']['real_time_factor']:.3f})
+                    ✅ Transcribed <b>{data['duration_sec']:.1f}s</b> of audio in
+                    <b>{processing_time:.2f}s</b>
+                    (RTF: {rtf:.3f})
                 </div>
                 """, unsafe_allow_html=True)
                 st.write("")
@@ -141,7 +148,12 @@ with tab1:
                 col2.metric("Confidence", f"{data['language']['confidence']:.1%}")
                 col3.metric("Engine", data['engine'].replace("tier", "Tier "))
                 col4.metric("Duration", f"{data['duration_sec']:.1f}s")
-                col5.metric("Cost/1K min", f"${data['metrics']['cost_per_1000_min_audio_usd']['spot']:.2f}")
+                # Check if cost data is available (nested in processing_metrics)
+                cost_data = data['metrics'].get('processing_metrics', {}).get('cost_per_1000_min_audio_usd', {})
+                if cost_data:
+                    col5.metric("Cost/1K min", f"${cost_data.get('spot', 0):.2f}")
+                else:
+                    col5.metric("Cost/1K min", "N/A")
                 
                 st.subheader("📝 Transcription")
                 st.write(data['text'])
@@ -170,15 +182,19 @@ with tab1:
                 
                 with st.expander("📊 Performance Metrics"):
                     metrics = data['metrics']
+                    proc_metrics = metrics.get('processing_metrics', {})
                     mcol1, mcol2 = st.columns(2)
                     with mcol1:
-                        st.write(f"**Total processing:** {metrics['total_processing_time_sec']:.3f}s")
-                        st.write(f"**Language detection:** {metrics['language_detection_time_ms']:.1f}ms")
-                        st.write(f"**Transcription:** {metrics['transcription_time_sec']:.3f}s")
+                        # Check for correct field names (API uses different names)
+                        if 'processing_time_seconds' in proc_metrics:
+                            st.write(f"**Total processing:** {proc_metrics['processing_time_seconds']:.3f}s")
+                        st.write(f"**Language detection:** {metrics.get('lang_detect_time_ms', 0):.1f}ms")
+                        st.write(f"**Transcription:** {metrics.get('transcribe_time_seconds', 0):.3f}s")
                     with mcol2:
-                        st.write(f"**Real-time factor:** {metrics['real_time_factor']:.4f}")
-                        st.write(f"**Instance:** {metrics['instance_type']}")
-                        st.write(f"**Chunk approach:** {metrics['chunk_approach']}")
+                        if 'real_time_factor' in proc_metrics:
+                            st.write(f"**Real-time factor:** {proc_metrics['real_time_factor']:.4f}")
+                        st.write(f"**Instance:** {proc_metrics.get('instance_type', 'N/A')}")
+                        st.write(f"**Chunk approach:** {data.get('chunk_approach', 'N/A')}")
                 
                 with st.expander("🔎 Full JSON Response"):
                     st.json(data)
@@ -221,7 +237,7 @@ with tab2:
         )
         diar_format = st.selectbox("Output format", ["json", "text"], key="diar_format")
 
-    if diar_file and st.button("🗣️ Diarize & Transcribe", type="primary", use_container_width=True, key="btn_diarize"):
+    if diar_file and st.button("🗣️ Diarize & Transcribe", type="primary", width='stretch', key="btn_diarize"):
 
         progress_bar = st.progress(0)
         status_text = st.empty()
@@ -290,7 +306,10 @@ with tab2:
                 col1.metric("Speakers", diar_data.get("num_speakers", "?"))
                 col2.metric("Engine", data.get("engine", "?"))
                 col3.metric("Diarization Time", f"{diar_data.get('processing_time_sec', 0):.2f}s")
-                col4.metric("Total Time", f"{data.get('metrics', {}).get('total_processing_time_sec', 0):.2f}s")
+                # Get total processing time from nested metrics
+                proc_metrics = data.get('metrics', {}).get('processing_metrics', {})
+                total_time = proc_metrics.get('processing_time_seconds', 0)
+                col4.metric("Total Time", f"{total_time:.2f}s")
 
                 # Speaker-labeled transcript
                 st.subheader("📝 Speaker Transcript")
@@ -308,7 +327,7 @@ with tab2:
 
                 with st.expander("📊 Segments Detail"):
                     segments = diar_data.get("segments", [])
-                    st.dataframe(segments, use_container_width=True, hide_index=True)
+                    st.dataframe(segments, width='stretch', hide_index=True)
 
                 with st.expander("🔎 Full JSON Response"):
                     st.json(data)
@@ -352,7 +371,7 @@ with tab3:
         file_list = ", ".join([f.name for f in multi_files])
         st.caption(file_list)
     
-    if multi_files and st.button("🌍 Run Multi-Language Test", type="primary", use_container_width=True, key="btn_multi"):
+    if multi_files and st.button("🌍 Run Multi-Language Test", type="primary", width='stretch', key="btn_multi"):
         
         results = []
         progress_bar = st.progress(0)
@@ -387,7 +406,11 @@ with tab3:
                     
                     actual_tier = data.get('engine', 'unknown')
                     routing_correct = (actual_tier == expected_tier)
-                    
+
+                    # Get RTF from nested metrics
+                    proc_metrics = data.get('metrics', {}).get('processing_metrics', {})
+                    rtf = proc_metrics.get('real_time_factor', 0)
+
                     results.append({
                         "File": audio.name,
                         "Detected Language": data['language']['code'].upper(),
@@ -397,7 +420,7 @@ with tab3:
                         "Routing ✓": "✅" if routing_correct else "❌",
                         "Duration (s)": f"{data['duration_sec']:.1f}",
                         "Processing (s)": f"{elapsed:.2f}",
-                        "RTF": f"{data['metrics']['real_time_factor']:.4f}",
+                        "RTF": f"{rtf:.4f}",
                         "Text Preview": data['text'][:80] + "..." if len(data['text']) > 80 else data['text']
                     })
                 else:
@@ -432,7 +455,7 @@ with tab3:
         
         # Display results table
         st.subheader("📋 Results")
-        st.dataframe(results, use_container_width=True, hide_index=True)
+        st.dataframe(results, width='stretch', hide_index=True)
         
         # Summary metrics
         successful = [r for r in results if r["Detected Language"] != "ERROR"]
@@ -497,7 +520,7 @@ with tab4:
     if bench_files:
         st.write(f"**{len(bench_files)} files loaded** | Total: {sum(len(f.getvalue()) for f in bench_files) / (1024*1024):.1f} MB")
     
-    if bench_files and st.button("⚡ Run Benchmark", type="primary", use_container_width=True, key="btn_bench"):
+    if bench_files and st.button("⚡ Run Benchmark", type="primary", width='stretch', key="btn_bench"):
         
         concurrency_level = {"Sequential": 1, "Parallel (2)": 2, "Parallel (4)": 4, "Parallel (8)": 8}[concurrency]
         
@@ -532,6 +555,12 @@ with tab4:
                 
                 if response.status_code == 200:
                     data = response.json()
+                    # Extract nested metrics
+                    metrics = data.get('metrics', {})
+                    proc_metrics = metrics.get('processing_metrics', {})
+                    rtf = proc_metrics.get('real_time_factor', 0)
+                    cost_data = proc_metrics.get('cost_per_1000_min_audio_usd', {})
+
                     return {
                         "file": audio.name,
                         "iteration": request_info["iteration"],
@@ -540,11 +569,11 @@ with tab4:
                         "engine": data.get('engine', 'unknown'),
                         "duration_sec": data['duration_sec'],
                         "processing_sec": elapsed,
-                        "rtf": data['metrics']['real_time_factor'],
-                        "rtfx": 1 / data['metrics']['real_time_factor'] if data['metrics']['real_time_factor'] > 0 else 0,
-                        "lang_detection_ms": data['metrics']['language_detection_time_ms'],
-                        "transcription_sec": data['metrics']['transcription_time_sec'],
-                        "cost_spot": data['metrics']['cost_per_1000_min_audio_usd']['spot'],
+                        "rtf": rtf,
+                        "rtfx": 1 / rtf if rtf > 0 else 0,
+                        "lang_detection_ms": metrics.get('lang_detect_time_ms', 0),
+                        "transcription_sec": metrics.get('transcribe_time_seconds', 0),
+                        "cost_spot": cost_data.get('spot', 0),
                         "success": True
                     }
                 else:
@@ -665,7 +694,7 @@ with tab4:
                     "Cost/1K min": f"${r['cost_spot']:.2f}"
                 })
             
-            st.dataframe(display_results, use_container_width=True, hide_index=True)
+            st.dataframe(display_results, width='stretch', hide_index=True)
             
             # Download results
             import io
@@ -736,7 +765,7 @@ with tab5:
 
     col_refresh, col_status = st.columns([1, 3])
     with col_refresh:
-        if st.button("🔄 Refresh Metrics", use_container_width=True):
+        if st.button("🔄 Refresh Metrics", width='stretch'):
             st.rerun()
 
     try:
