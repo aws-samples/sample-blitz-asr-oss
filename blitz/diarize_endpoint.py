@@ -32,7 +32,7 @@ def parse_srt_with_speakers(srt_path: str) -> list:
     if not os.path.exists(srt_path):
         return segments
     
-    with open(srt_path, "r") as f:
+    with open(srt_path, "r", encoding="utf-8") as f:
         content = f.read()
     
     blocks = content.strip().split("\n\n")
