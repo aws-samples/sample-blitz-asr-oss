@@ -1,4 +1,232 @@
-Name         Version ID             Fix Versions
------------- ------- -------------- ------------
-transformers 4.57.6  PYSEC-2025-217
-transformers 4.57.6  CVE-2026-1839  5.0.0rc3
+DEPRECATION: Loading egg at /usr/local/lib/python3.12/dist-packages/igraph-0.11.8-py3.12-linux-x86_64.egg is deprecated. pip 25.1 will enforce this behaviour change. A possible replacement is to use pip for package installation. Discussion can be found at https://github.com/pypa/pip/issues/12330
+DEPRECATION: Loading egg at /usr/local/lib/python3.12/dist-packages/lightning_thunder-0.2.0.dev0-py3.12.egg is deprecated. pip 25.1 will enforce this behaviour change. A possible replacement is to use pip for package installation. Discussion can be found at https://github.com/pypa/pip/issues/12330
+DEPRECATION: Loading egg at /usr/local/lib/python3.12/dist-packages/looseversion-1.3.0-py3.12.egg is deprecated. pip 25.1 will enforce this behaviour change. A possible replacement is to use pip for package installation. Discussion can be found at https://github.com/pypa/pip/issues/12330
+DEPRECATION: Loading egg at /usr/local/lib/python3.12/dist-packages/nvfuser-0.2.13a0+0d33366-py3.12-linux-x86_64.egg is deprecated. pip 25.1 will enforce this behaviour change. A possible replacement is to use pip for package installation. Discussion can be found at https://github.com/pypa/pip/issues/12330
+DEPRECATION: Loading egg at /usr/local/lib/python3.12/dist-packages/opt_einsum-3.4.0-py3.12.egg is deprecated. pip 25.1 will enforce this behaviour change. A possible replacement is to use pip for package installation. Discussion can be found at https://github.com/pypa/pip/issues/12330
+DEPRECATION: Loading egg at /usr/local/lib/python3.12/dist-packages/texttable-1.7.0-py3.12.egg is deprecated. pip 25.1 will enforce this behaviour change. A possible replacement is to use pip for package installation. Discussion can be found at https://github.com/pypa/pip/issues/12330
+Looking in indexes: https://pypi.org/simple, https://pypi.ngc.nvidia.com
+Requirement already satisfied: pip-audit in /usr/local/lib/python3.12/dist-packages (2.10.1)
+Requirement already satisfied: CacheControl>=0.13.0 in /usr/local/lib/python3.12/dist-packages (from CacheControl[filecache]>=0.13.0->pip-audit) (0.14.4)
+Requirement already satisfied: cyclonedx-python-lib<12,>=5 in /usr/local/lib/python3.12/dist-packages (from pip-audit) (11.11.0)
+Requirement already satisfied: packaging>=23.0.0 in /usr/local/lib/python3.12/dist-packages (from pip-audit) (23.2)
+Requirement already satisfied: pip-api>=0.0.28 in /usr/local/lib/python3.12/dist-packages (from pip-audit) (0.0.34)
+Requirement already satisfied: pip-requirements-parser>=32.0.0 in /usr/local/lib/python3.12/dist-packages (from pip-audit) (32.0.1)
+Requirement already satisfied: requests>=2.31.0 in /usr/local/lib/python3.12/dist-packages (from pip-audit) (2.32.3)
+Requirement already satisfied: rich>=12.4 in /usr/local/lib/python3.12/dist-packages (from pip-audit) (13.9.4)
+Requirement already satisfied: tomli>=2.2.1 in /usr/local/lib/python3.12/dist-packages (from pip-audit) (2.4.1)
+Requirement already satisfied: tomli-w>=1.2.0 in /usr/local/lib/python3.12/dist-packages (from pip-audit) (1.2.0)
+Requirement already satisfied: platformdirs>=4.2.0 in /usr/local/lib/python3.12/dist-packages (from pip-audit) (4.3.6)
+Requirement already satisfied: msgpack<2.0.0,>=0.5.2 in /usr/local/lib/python3.12/dist-packages (from CacheControl>=0.13.0->CacheControl[filecache]>=0.13.0->pip-audit) (1.1.0)
+Requirement already satisfied: filelock>=3.8.0 in /usr/local/lib/python3.12/dist-packages (from CacheControl[filecache]>=0.13.0->pip-audit) (3.16.1)
+Requirement already satisfied: license-expression<31,>=30 in /usr/local/lib/python3.12/dist-packages (from cyclonedx-python-lib<12,>=5->pip-audit) (30.4.4)
+Requirement already satisfied: packageurl-python<2,>=0.11 in /usr/local/lib/python3.12/dist-packages (from cyclonedx-python-lib<12,>=5->pip-audit) (0.17.6)
+Requirement already satisfied: py-serializable<3.0.0,>=2.1.0 in /usr/local/lib/python3.12/dist-packages (from cyclonedx-python-lib<12,>=5->pip-audit) (2.1.0)
+Requirement already satisfied: sortedcontainers<3.0.0,>=2.4.0 in /usr/local/lib/python3.12/dist-packages (from cyclonedx-python-lib<12,>=5->pip-audit) (2.4.0)
+Requirement already satisfied: typing_extensions<5.0,>=4.6 in /usr/local/lib/python3.12/dist-packages (from cyclonedx-python-lib<12,>=5->pip-audit) (4.15.0)
+Requirement already satisfied: pip in /usr/local/lib/python3.12/dist-packages (from pip-api>=0.0.28->pip-audit) (24.3.1)
+Requirement already satisfied: pyparsing in /usr/local/lib/python3.12/dist-packages (from pip-requirements-parser>=32.0.0->pip-audit) (3.2.0)
+Requirement already satisfied: charset-normalizer<4,>=2 in /usr/local/lib/python3.12/dist-packages (from requests>=2.31.0->pip-audit) (3.4.0)
+Requirement already satisfied: idna<4,>=2.5 in /usr/local/lib/python3.12/dist-packages (from requests>=2.31.0->pip-audit) (3.10)
+Requirement already satisfied: urllib3<3,>=1.21.1 in /usr/local/lib/python3.12/dist-packages (from requests>=2.31.0->pip-audit) (2.0.7)
+Requirement already satisfied: certifi>=2017.4.17 in /usr/local/lib/python3.12/dist-packages (from requests>=2.31.0->pip-audit) (2024.8.30)
+Requirement already satisfied: markdown-it-py>=2.2.0 in /usr/local/lib/python3.12/dist-packages (from rich>=12.4->pip-audit) (3.0.0)
+Requirement already satisfied: pygments<3.0.0,>=2.13.0 in /usr/local/lib/python3.12/dist-packages (from rich>=12.4->pip-audit) (2.18.0)
+Requirement already satisfied: boolean.py>=4.0 in /usr/local/lib/python3.12/dist-packages (from license-expression<31,>=30->cyclonedx-python-lib<12,>=5->pip-audit) (5.0)
+Requirement already satisfied: mdurl~=0.1 in /usr/local/lib/python3.12/dist-packages (from markdown-it-py>=2.2.0->rich>=12.4->pip-audit) (0.1.2)
+Requirement already satisfied: defusedxml<0.8.0,>=0.7.1 in /usr/local/lib/python3.12/dist-packages (from py-serializable<3.0.0,>=2.1.0->cyclonedx-python-lib<12,>=5->pip-audit) (0.7.1)
+WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager, possibly rendering your system unusable.It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv. Use the --root-user-action option if you know what you are doing and want to suppress this warning.
+
+[notice] A new release of pip is available: 24.3.1 -> 26.1.2
+[notice] To update, run: python -m pip install --upgrade pip
+DEPRECATION: Loading egg at /usr/local/lib/python3.12/dist-packages/igraph-0.11.8-py3.12-linux-x86_64.egg is deprecated. pip 25.1 will enforce this behaviour change. A possible replacement is to use pip for package installation. Discussion can be found at https://github.com/pypa/pip/issues/12330
+DEPRECATION: Loading egg at /usr/local/lib/python3.12/dist-packages/lightning_thunder-0.2.0.dev0-py3.12.egg is deprecated. pip 25.1 will enforce this behaviour change. A possible replacement is to use pip for package installation. Discussion can be found at https://github.com/pypa/pip/issues/12330
+DEPRECATION: Loading egg at /usr/local/lib/python3.12/dist-packages/looseversion-1.3.0-py3.12.egg is deprecated. pip 25.1 will enforce this behaviour change. A possible replacement is to use pip for package installation. Discussion can be found at https://github.com/pypa/pip/issues/12330
+DEPRECATION: Loading egg at /usr/local/lib/python3.12/dist-packages/nvfuser-0.2.13a0+0d33366-py3.12-linux-x86_64.egg is deprecated. pip 25.1 will enforce this behaviour change. A possible replacement is to use pip for package installation. Discussion can be found at https://github.com/pypa/pip/issues/12330
+DEPRECATION: Loading egg at /usr/local/lib/python3.12/dist-packages/opt_einsum-3.4.0-py3.12.egg is deprecated. pip 25.1 will enforce this behaviour change. A possible replacement is to use pip for package installation. Discussion can be found at https://github.com/pypa/pip/issues/12330
+DEPRECATION: Loading egg at /usr/local/lib/python3.12/dist-packages/texttable-1.7.0-py3.12.egg is deprecated. pip 25.1 will enforce this behaviour change. A possible replacement is to use pip for package installation. Discussion can be found at https://github.com/pypa/pip/issues/12330
+Found 139 known vulnerabilities in 34 packages
+Name              Version  ID                  Fix Versions
+----------------- -------- ------------------- -------------
+aiohttp           3.11.9   PYSEC-2026-237      3.14.1
+aiohttp           3.11.9   CVE-2026-34515      3.13.4
+aiohttp           3.11.9   CVE-2026-34513      3.13.4
+aiohttp           3.11.9   CVE-2026-34516      3.13.4
+aiohttp           3.11.9   CVE-2026-34517      3.13.4
+aiohttp           3.11.9   CVE-2026-34519      3.13.4
+aiohttp           3.11.9   CVE-2026-34518      3.13.4
+aiohttp           3.11.9   CVE-2026-34520      3.13.4
+aiohttp           3.11.9   CVE-2026-34525      3.13.4
+aiohttp           3.11.9   CVE-2025-53643      3.12.14
+aiohttp           3.11.9   CVE-2025-69223      3.13.3
+aiohttp           3.11.9   CVE-2025-69224      3.13.3
+aiohttp           3.11.9   CVE-2025-69228      3.13.3
+aiohttp           3.11.9   CVE-2025-69229      3.13.3
+aiohttp           3.11.9   CVE-2025-69230      3.13.3
+aiohttp           3.11.9   CVE-2025-69226      3.13.3
+aiohttp           3.11.9   CVE-2025-69227      3.13.3
+aiohttp           3.11.9   CVE-2025-69225      3.13.3
+aiohttp           3.11.9   CVE-2026-22815      3.13.4
+aiohttp           3.11.9   CVE-2026-34514      3.13.4
+aiohttp           3.11.9   CVE-2026-34993      3.14.0
+aiohttp           3.11.9   CVE-2026-47265      3.14.0
+aiohttp           3.11.9   CVE-2026-54273      3.14.1
+aiohttp           3.11.9   CVE-2026-54279      3.14.1
+aiohttp           3.11.9   CVE-2026-54277      3.14.1
+aiohttp           3.11.9   CVE-2026-50269      3.14.0
+aiohttp           3.11.9   CVE-2026-54276      3.14.1
+aiohttp           3.11.9   CVE-2026-54278      3.14.1
+aiohttp           3.11.9   CVE-2026-54280      3.14.1
+aiohttp           3.11.9   CVE-2026-54274      3.14.1
+black             24.10.0  CVE-2026-32274      26.3.1
+bleach            6.2.0    GHSA-gj48-438w-jh9v 6.4.0
+bleach            6.2.0    GHSA-8rfp-98v4-mmr6 6.4.0
+distributed       2024.9.0 PYSEC-2026-169      2026.1.0
+distributed       2024.9.0 PYSEC-2026-169      2026.1.0
+filelock          3.16.1   CVE-2025-68146      3.20.1
+filelock          3.16.1   CVE-2026-22701      3.20.3
+fonttools         4.55.2   CVE-2025-66034      4.60.2
+h11               0.14.0   PYSEC-2026-348      0.16.0
+idna              3.10     PYSEC-2026-215      3.15
+jinja2            3.1.4    CVE-2024-56326      3.1.5
+jinja2            3.1.4    CVE-2024-56201      3.1.5
+jinja2            3.1.4    CVE-2025-27516      3.1.6
+jupyter-core      5.7.2    CVE-2025-30167      5.8.1
+jupyter-server    2.14.2   PYSEC-2026-67       2.18.0
+jupyter-server    2.14.2   PYSEC-2026-68       2.18.0
+jupyter-server    2.14.2   PYSEC-2026-69       2.18.0
+jupyter-server    2.14.2   PYSEC-2026-67       2.18.0
+jupyter-server    2.14.2   PYSEC-2026-69       2.18.0
+jupyter-server    2.14.2   PYSEC-2026-68       2.18.0
+jupyter-server    2.14.2   PYSEC-2026-366      2.20.0
+jupyter-server    2.14.2   CVE-2026-40110      2.18.0
+jupyterlab        4.3.2    PYSEC-2026-164      4.5.7
+jupyterlab        4.3.2    PYSEC-2026-164      4.5.7
+jupyterlab        4.3.2    CVE-2025-59842      4.4.8
+jupyterlab        4.3.2    CVE-2026-42557      4.5.7
+jupyterlab        4.3.2    GHSA-vmhf-c436-hxj4 4.5.9
+markdown          3.7      PYSEC-2026-89       3.8.1
+markdown          3.7      PYSEC-2026-89
+mistune           3.0.2    PYSEC-2026-168      3.2.1
+mistune           3.0.2    PYSEC-2026-168      3.2.1
+mistune           3.0.2    CVE-2026-33079      3.2.1
+mistune           3.0.2    CVE-2026-44708
+mistune           3.0.2    CVE-2026-44897      3.2.1
+msgpack           1.1.0    GHSA-6v7p-g79w-8964 1.2.1
+nbconvert         7.16.4   CVE-2025-53000      7.17.0
+nbconvert         7.16.4   CVE-2026-39378      7.17.1
+nbconvert         7.16.4   CVE-2026-39377      7.17.1
+nemo-toolkit      2.4.0    CVE-2026-24157      2.6.2
+nemo-toolkit      2.4.0    CVE-2026-24159      2.6.2
+nemo-toolkit      2.4.0    CVE-2025-33253      2.6.1
+nemo-toolkit      2.4.0    CVE-2025-33245      2.6.1
+nltk              3.9.4    PYSEC-2026-597
+notebook          7.3.1    CVE-2026-40171      7.5.6
+onnx              1.17.0   PYSEC-2026-104      1.21.0
+onnx              1.17.0   PYSEC-2026-103      1.21.0rc1
+onnx              1.17.0   PYSEC-2025-148
+onnx              1.17.0   PYSEC-2026-103      1.21.0rc1
+onnx              1.17.0   PYSEC-2026-104      1.21.0
+onnx              1.17.0   CVE-2026-34446      1.21.0
+onnx              1.17.0   GHSA-q56x-g2fj-4rj6 1.21.0
+onnx              1.17.0   CVE-2026-27489      1.21.0
+onnx              1.17.0   CVE-2026-34445      1.21.0
+pillow            11.0.0   PYSEC-2026-165      12.2.0
+pillow            11.0.0   PYSEC-2026-165      12.2.0
+pillow            11.0.0   CVE-2026-25990      12.1.1
+pillow            11.0.0   CVE-2026-40192      12.2.0
+pillow            11.0.0   CVE-2026-42310      12.2.0
+pillow            11.0.0   CVE-2026-42311      12.2.0
+pip               24.3.1   PYSEC-2026-196      26.1.2
+pip               24.3.1   CVE-2025-8869       25.3
+pip               24.3.1   CVE-2026-1703       26.0
+pip               24.3.1   CVE-2026-3219       26.1
+pip               24.3.1   CVE-2026-6357       26.1
+pydantic-settings 2.14.1   GHSA-4xgf-cpjx-pc3j 2.14.2
+pygments          2.18.0   CVE-2026-4539       2.20.0
+pytest            8.1.1    CVE-2025-71176      9.0.3
+python-multipart  0.0.30   CVE-2026-53540      0.0.31
+requests          2.32.3   CVE-2024-47081      2.32.4
+requests          2.32.3   CVE-2026-25645      2.33.0
+setuptools        70.3.0   PYSEC-2025-49       78.1.1
+setuptools        70.3.0   PYSEC-2025-49       78.1.1
+starlette         1.2.1    PYSEC-2026-249      1.3.1
+starlette         1.2.1    PYSEC-2026-248      1.3.0
+tornado           6.4.2    PYSEC-2026-140      6.5.5
+tornado           6.4.2    PYSEC-2026-140      6.5.5
+tornado           6.4.2    CVE-2025-47287      6.5
+tornado           6.4.2    GHSA-78cv-mqj4-43f7 6.5.5
+tornado           6.4.2    CVE-2026-35536      6.5.5
+tornado           6.4.2    CVE-2026-49854      6.5.6
+tornado           6.4.2    CVE-2026-49853      6.5.6
+tornado           6.4.2    CVE-2026-49855      6.5.6
+tornado           6.4.2    GHSA-pw6j-qg29-8w7f 6.5.7
+transformers      4.51.3   PYSEC-2025-217
+transformers      4.51.3   PYSEC-2025-214
+transformers      4.51.3   PYSEC-2025-218
+transformers      4.51.3   PYSEC-2025-211
+transformers      4.51.3   PYSEC-2025-212
+transformers      4.51.3   PYSEC-2025-213
+transformers      4.51.3   PYSEC-2025-215
+transformers      4.51.3   PYSEC-2025-216
+transformers      4.51.3   CVE-2025-3777       4.52.1
+transformers      4.51.3   CVE-2025-3933       4.52.1
+transformers      4.51.3   CVE-2025-5197       4.53.0
+transformers      4.51.3   CVE-2025-6638       4.53.0
+transformers      4.51.3   CVE-2025-6051       4.53.0
+transformers      4.51.3   CVE-2025-6921       4.53.0
+transformers      4.51.3   CVE-2026-1839       5.0.0rc3
+transformers      4.51.3   CVE-2026-4372       5.3.0
+urllib3           2.0.7    PYSEC-2026-141      2.7.0
+urllib3           2.0.7    CVE-2024-37891      1.26.19,2.2.2
+urllib3           2.0.7    CVE-2025-50181      2.5.0
+urllib3           2.0.7    CVE-2025-66418      2.6.0
+urllib3           2.0.7    CVE-2025-66471      2.6.0
+urllib3           2.0.7    CVE-2026-21441      2.6.3
+werkzeug          3.1.3    CVE-2025-66221      3.1.4
+werkzeug          3.1.3    CVE-2026-21860      3.1.5
+werkzeug          3.1.3    CVE-2026-27199      3.1.6
+wheel             0.45.1   CVE-2026-24049      0.46.2
+
+Name                   Skip Reason
+---------------------- ------------------------------------------------------------------------------------------
+apex                   Dependency not found on PyPI and could not be audited: apex (0.1)
+ctc-forced-aligner     Dependency not found on PyPI and could not be audited: ctc-forced-aligner (0.3.0)
+cudf                   Dependency not found on PyPI and could not be audited: cudf (24.10.0)
+cudf-polars            Dependency not found on PyPI and could not be audited: cudf-polars (24.10.0)
+cugraph                Dependency not found on PyPI and could not be audited: cugraph (24.10.0)
+cugraph-dgl            Dependency not found on PyPI and could not be audited: cugraph-dgl (24.10.0)
+cugraph-equivariant    Dependency not found on PyPI and could not be audited: cugraph-equivariant (24.10.0)
+cugraph-pyg            Dependency not found on PyPI and could not be audited: cugraph-pyg (24.10.0)
+cugraph-service-client Dependency not found on PyPI and could not be audited: cugraph-service-client (24.10.0)
+cugraph-service-server Dependency not found on PyPI and could not be audited: cugraph-service-server (24.10.0)
+cuml                   Dependency not found on PyPI and could not be audited: cuml (24.10.0)
+cuvs                   Dependency not found on PyPI and could not be audited: cuvs (24.10.0)
+dask-cudf              Dependency not found on PyPI and could not be audited: dask-cudf (24.10.0)
+distributed-ucxx       Dependency not found on PyPI and could not be audited: distributed-ucxx (0.40.0)
+kvikio                 Dependency not found on PyPI and could not be audited: kvikio (24.10.0)
+libcudf                Dependency not found on PyPI and could not be audited: libcudf (24.10.0)
+libkvikio              Dependency not found on PyPI and could not be audited: libkvikio (24.10.0)
+librmm                 Dependency not found on PyPI and could not be audited: librmm (24.10.0)
+libucxx                Dependency not found on PyPI and could not be audited: libucxx (0.40.0)
+lightning-thunder      Dependency not found on PyPI and could not be audited: lightning-thunder (0.2.0.dev0)
+nvfuser                Dependency not found on PyPI and could not be audited: nvfuser (0.2.13a0+0d33366)
+nx-cugraph             Dependency not found on PyPI and could not be audited: nx-cugraph (24.10.0)
+opencv                 Dependency not found on PyPI and could not be audited: opencv (4.10.0)
+polygraphy             Dependency not found on PyPI and could not be audited: polygraphy (0.49.13)
+pycocotools            Dependency not found on PyPI and could not be audited: pycocotools (2.0+nv0.8.1)
+pylibcudf              Dependency not found on PyPI and could not be audited: pylibcudf (24.10.0)
+pylibcugraph           Dependency not found on PyPI and could not be audited: pylibcugraph (24.10.0)
+pylibcugraphops        Dependency not found on PyPI and could not be audited: pylibcugraphops (24.10.0)
+pylibraft              Dependency not found on PyPI and could not be audited: pylibraft (24.10.0)
+pylibwholegraph        Dependency not found on PyPI and could not be audited: pylibwholegraph (24.10.0)
+pynvjitlink            Dependency not found on PyPI and could not be audited: pynvjitlink (0.3.0)
+pytorch-triton         Dependency not found on PyPI and could not be audited: pytorch-triton (3.0.0+72734f086)
+raft-dask              Dependency not found on PyPI and could not be audited: raft-dask (24.10.0)
+rapids-dask-dependency Dependency not found on PyPI and could not be audited: rapids-dask-dependency (24.10.0a0)
+rmm                    Dependency not found on PyPI and could not be audited: rmm (24.10.0)
+torch                  Dependency not found on PyPI and could not be audited: torch (2.6.0+cu124)
+torch-tensorrt         Dependency not found on PyPI and could not be audited: torch-tensorrt (2.6.0a0)
+torchaudio             Dependency not found on PyPI and could not be audited: torchaudio (2.6.0+cu124)
+transformer-engine     Dependency not found on PyPI and could not be audited: transformer-engine (1.13.0+ccd7a0c)
+ucx-py                 Dependency not found on PyPI and could not be audited: ucx-py (0.40.0)
+ucxx                   Dependency not found on PyPI and could not be audited: ucxx (0.40.0)
