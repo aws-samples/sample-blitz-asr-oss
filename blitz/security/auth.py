@@ -1,4 +1,5 @@
 import os, json, hashlib, secrets, logging
+import functools
 from typing import Dict, List, Optional, Set
 from dataclasses import dataclass, field
 from fastapi import Request, HTTPException
@@ -20,8 +21,23 @@ class APIKeyAuth:
 
     @classmethod
     def from_env(cls):
-        enabled = os.environ.get("BLITZ_AUTH_ENABLED", "true").lower() in ("true", "1", "yes")
+        # Auth is ENABLED by default. Must explicitly set to "false" to disable.
+        enabled = os.environ.get("BLITZ_AUTH_ENABLED", "true").lower() != "false"
         keys_raw = os.environ.get("BLITZ_API_KEYS", "")
+
+        # Fallback: check AWS Secrets Manager if env var not set
+        if not keys_raw:
+            secret_arn = os.environ.get("API_KEYS_SECRET_ARN", "")
+            if secret_arn:
+                try:
+                    import boto3
+                    client = boto3.client("secretsmanager")
+                    response = client.get_secret_value(SecretId=secret_arn)
+                    keys_raw = response.get("SecretString", "")
+                    logger.info("API keys loaded from Secrets Manager")
+                except Exception as e:
+                    logger.error(f"Failed to retrieve API keys from Secrets Manager: {e}")
+
         if not enabled:
             logger.info("API key authentication DISABLED")
             return cls(enabled=False)

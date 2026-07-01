@@ -333,10 +333,13 @@ Resources:
               - Effect: Allow
                 Action:
                   - ecr:GetAuthorizationToken
+                Resource: '*'  # GetAuthorizationToken does not support resource-level permissions
+              - Effect: Allow
+                Action:
                   - ecr:BatchCheckLayerAvailability
                   - ecr:GetDownloadUrlForLayer
                   - ecr:BatchGetImage
-                Resource: '*'
+                Resource: !Sub 'arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/blitz-*'
 
   EventBridgeRole:
     Type: AWS::IAM::Role

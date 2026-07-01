@@ -1,0 +1,4 @@
+Name         Version ID             Fix Versions
+------------ ------- -------------- ------------
+transformers 4.57.6  PYSEC-2025-217
+transformers 4.57.6  CVE-2026-1839  5.0.0rc3

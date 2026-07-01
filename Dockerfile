@@ -261,5 +261,10 @@ COPY blitz/ /app/blitz/
 # Copy utility scripts
 COPY scripts/ /app/scripts/
 
+# Security: Run as non-root user
+RUN groupadd -r blitz && useradd -r -g blitz -d /app -s /sbin/nologin blitz \
+    && chown -R blitz:blitz /app
+USER blitz
+
 # Use integrated server with modular architecture
 CMD ["uvicorn", "blitz.server:app", "--host", "0.0.0.0", "--port", "8000"]

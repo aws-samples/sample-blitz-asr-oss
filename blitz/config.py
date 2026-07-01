@@ -5,6 +5,7 @@ All configuration is managed through environment variables with sensible default
 Uses Pydantic for type safety and validation.
 """
 
+import os, logging
 from typing import Dict, Set
 from pydantic import Field, field_validator
 
@@ -498,3 +499,19 @@ VOXLINGUA_TO_ISO639_1: Dict[str, str] = {
 
 # Singleton configuration instance
 config = ServerConfig()
+
+# ============================================================================
+# Model Supply Chain Warning (PCSR requirement)
+# ============================================================================
+_logger = logging.getLogger("blitz.config")
+
+_revision_fields = [
+    "tier1_model_revision", "tier2_model_revision", "tier3_model_revision",
+    "whisper_tiny_revision", "voxlingua_revision", "silero_vad_revision",
+]
+_unpinned = [f for f in _revision_fields if not getattr(config, f, "")]
+if _unpinned and os.environ.get("ENVIRONMENT", "").lower() in ("prod", "production"):
+    _logger.warning(
+        f"SECURITY: Production deployment has unpinned model revisions: {_unpinned}. "
+        f"Pin to specific commit SHAs to prevent supply chain attacks."
+    )

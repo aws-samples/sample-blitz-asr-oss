@@ -12,6 +12,7 @@ venv/
 *.egg-info/
 dist/
 build/
+venv/
 
 # OS files
 .DS_Store
