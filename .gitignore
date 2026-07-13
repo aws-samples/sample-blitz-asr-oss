@@ -74,3 +74,9 @@ blitz_backup/
 blitz-code-working.tar.gz
 whisper-diarization-backup.tar.gz
 
+appsec-reports/
+
+# Copyrighted content (not for distribution)
+tests/fixtures/podcasts/
+tests/fixtures/benchmark-transcripts/jony-ive-youtube-gold-standard.md
+tests/fixtures/benchmark-transcripts/kelsey-hightower-gold-standard.md
