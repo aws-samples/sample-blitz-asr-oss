@@ -342,6 +342,8 @@ Benchmarked on g6.xlarge (NVIDIA L4 24GB):
 | Capacity | 1.6 min audio/s |
 | RTF | 0.006-0.01 |
 
+> **Coming soon:** We will benchmark the g7 instance type (NVIDIA RTX PRO 4500 Blackwell, 32GB GDDR7; Intel Xeon 6) in the future. We expect cost-performance gains over g6 (NVIDIA L4) from the newer GPU architecture and larger, faster VRAM.
+
 ### Cost per 1000 Minutes (Spot)
 
 | Engine | Languages | Cost |
