@@ -7,10 +7,14 @@
 #   # Start blitz + observability stack
 #   docker compose -f docker-compose.yml -f observability/docker-compose.observability.yml up -d
 #
-#   # Access:
+#   # Access (bound to localhost only):
 #   - Blitz API:    http://localhost:8000
 #   - Prometheus:   http://localhost:9090
-#   - Grafana:      http://localhost:3000 (admin/admin)
+#   - Grafana:      http://localhost:3000
+#
+#   Grafana admin credentials are supplied via the environment (see
+#   .env.example). GRAFANA_ADMIN_PASSWORD is REQUIRED; compose refuses to
+#   start without it. Never bake credentials into this file.
 #
 # =============================================================================
 
@@ -18,8 +22,11 @@ services:
   prometheus:
     image: prom/prometheus:latest
     container_name: blitz-prometheus
+    # Bind to localhost only: Prometheus has no auth and exposes the
+    # lifecycle API (--web.enable-lifecycle). Front with a TLS proxy for
+    # remote access.
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
@@ -34,11 +41,16 @@ services:
   grafana:
     image: grafana/grafana:latest
     container_name: blitz-grafana
+    # Bind to localhost only; front with an authenticated TLS reverse proxy
+    # for remote access.
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      # Credentials come from the environment. GRAFANA_ADMIN_PASSWORD is
+      # required — compose fails fast if it is unset, so no default admin
+      # password is ever shipped.
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD must be set (see .env.example)}
       - GF_USERS_ALLOW_SIGN_UP=false
     volumes:
       - grafana_data:/var/lib/grafana
