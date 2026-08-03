@@ -8,11 +8,12 @@ from blitz.security.validation import RequestValidator
 logger = logging.getLogger("blitz.security")
 
 def integrate_security(app: FastAPI) -> dict:
-    # Deny cross-origin by default. Set BLITZ_CORS_ORIGINS to a comma-separated
-    # allowlist (e.g. "https://app.example.com") to permit specific origins, or
-    # "*" to allow any origin. Per the CORS spec, credentials are never sent
-    # with a wildcard origin, so allow_credentials is disabled in that case.
-    cors_origins = os.environ.get("BLITZ_CORS_ORIGINS", "").strip()
+    # Default to "*" so the sample works out of the box. Set BLITZ_CORS_ORIGINS
+    # to a comma-separated allowlist (e.g. "https://app.example.com") in
+    # production. Credentials are only allowed for an explicit origin allowlist:
+    # per the CORS spec they are never sent with a wildcard origin, so pairing
+    # "*" with allow_credentials=True is unsafe and is disabled here.
+    cors_origins = os.environ.get("BLITZ_CORS_ORIGINS", "*").strip()
     origins = [o.strip() for o in cors_origins.split(",") if o.strip()]
     allow_wildcard = origins == ["*"]
     allow_credentials = bool(origins) and not allow_wildcard
