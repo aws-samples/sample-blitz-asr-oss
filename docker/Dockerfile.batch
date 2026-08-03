@@ -19,6 +19,13 @@ ARG ENABLE_ONNX=false
 # Models will be downloaded at runtime on first job instead
 ARG SKIP_MODEL_CACHE=false
 
+# Route all model/framework caches under /app so the non-root runtime user
+# (created below) can read models baked in during the build. HF_HOME and
+# TORCH_HOME derive from HOME unless set explicitly.
+ENV HOME=/app \
+    HF_HOME=/app/.cache/huggingface \
+    TORCH_HOME=/app/.cache/torch
+
 # ============================================================================
 # System Dependencies
 # ============================================================================
@@ -195,6 +202,19 @@ WORKDIR /app
 
 # Copy modular architecture (includes banner.py)
 COPY blitz/ /app/blitz/
+
+# ============================================================================
+# Security: run as a non-root user (CKV_DOCKER_3)
+# ============================================================================
+RUN groupadd -r blitz && useradd -r -g blitz -d /app -s /sbin/nologin blitz \
+    && chown -R blitz:blitz /app
+USER blitz
+
+# Liveness check (CKV_DOCKER_2): verify the batch job module imports cleanly.
+# Batch containers have no long-running server, so we validate the code path
+# rather than an HTTP endpoint.
+HEALTHCHECK --interval=5m --timeout=10s --retries=3 \
+    CMD ["python3", "-c", "import blitz.batch.transcribe_job"]
 
 # ============================================================================
 # Entry Point for AWS Batch

@@ -131,6 +131,44 @@ Conditions:
 Resources:
 
   # --------------------------------------------------------------------------
+  # KMS CMK - encrypts the API-key secret and the CloudWatch log group
+  # --------------------------------------------------------------------------
+  EncryptionKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: !Sub 'Blitz ASR CMK (secrets + logs) - ${Environment}'
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: EnableRootAccountAdmin
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+          - Sid: AllowCloudWatchLogs
+            Effect: Allow
+            Principal:
+              Service: !Sub 'logs.${AWS::Region}.amazonaws.com'
+            Action:
+              - kms:Encrypt
+              - kms:Decrypt
+              - kms:ReEncrypt*
+              - kms:GenerateDataKey*
+              - kms:Describe*
+            Resource: '*'
+            Condition:
+              ArnLike:
+                'kms:EncryptionContext:aws:logs:arn': !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/ec2/blitz-api-${Environment}'
+
+  EncryptionKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub 'alias/blitz-asr-${Environment}'
+      TargetKeyId: !Ref EncryptionKey
+
+  # --------------------------------------------------------------------------
   # Secrets Manager - API Keys
   # --------------------------------------------------------------------------
   ApiKeySecret:
@@ -139,6 +177,7 @@ Resources:
       Name: !Sub 'blitz-api-keys-${Environment}'
       Description: 'Blitz ASR API keys (JSON format)'
       SecretString: !Ref ApiKeys
+      KmsKeyId: !Ref EncryptionKey
       Tags:
         - Key: Environment
           Value: !Ref Environment
@@ -148,6 +187,20 @@ Resources:
   # --------------------------------------------------------------------------
   EC2InstanceRole:
     Type: AWS::IAM::Role
+    Metadata:
+      cdk_nag:
+        rules_to_suppress:
+          - id: AwsSolutions-IAM4
+            reason: >-
+              CloudWatch agent metrics/logs require the AWS-managed
+              CloudWatchAgentServerPolicy, and SSM Session Manager access (no
+              inbound SSH) requires AmazonSSMManagedInstanceCore. Both are
+              AWS-recommended managed policies for this role.
+          - id: AwsSolutions-IAM5
+            reason: >-
+              ecr:GetAuthorizationToken does not support resource-level
+              permissions and must use Resource '*' per AWS documentation. All
+              other ECR actions are scoped to the blitz-* repositories.
     Properties:
       RoleName: !Sub 'blitz-ec2-role-${Environment}'
       AssumeRolePolicyDocument:
@@ -192,8 +245,13 @@ Resources:
             Statement:
               - Effect: Allow
                 Action:
-                  - secretsmanager:GetSecretValue
+                  - secretsmanager:GetSecretValue  # pragma: allowlist secret - IAM action name, not a secret
                 Resource: !Ref ApiKeySecret
+              # Required to decrypt the CMK-encrypted secret above.
+              - Effect: Allow
+                Action:
+                  - kms:Decrypt
+                Resource: !GetAtt EncryptionKey.Arn
 
   EC2InstanceProfile:
     Type: AWS::IAM::InstanceProfile
@@ -250,6 +308,7 @@ Resources:
     Properties:
       LogGroupName: !Sub '/aws/ec2/blitz-api-${Environment}'
       RetentionInDays: !If [IsProd, 90, 30]
+      KmsKeyId: !GetAtt EncryptionKey.Arn
 
   # --------------------------------------------------------------------------
   # EC2 Instance
