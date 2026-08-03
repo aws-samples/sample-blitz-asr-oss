@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from fastapi import Request, HTTPException
 
 logger = logging.getLogger("blitz.security")
-API_KEY_HEADER = "X-API-Key"
+API_KEY_HEADER = "X-API-Key"  # pragma: allowlist secret - HTTP header name, not a secret
 PUBLIC_ENDPOINTS = {"/health", "/metrics", "/docs", "/openapi.json", "/"}
 
 @dataclass

@@ -8,8 +8,14 @@
 
 FROM nvcr.io/nvidia/pytorch:24.02-py3
 
-# System deps (FFmpeg included)
-RUN apt-get update && apt-get install -y ffmpeg sox libsndfile1 && rm -rf /var/lib/apt/lists/*
+# Route all model/framework caches under /app so the non-root runtime user
+# (created below) can read models baked in during the build.
+ENV HOME=/app \
+    HF_HOME=/app/.cache/huggingface \
+    TORCH_HOME=/app/.cache/torch
+
+# System deps (FFmpeg included; curl for the container healthcheck)
+RUN apt-get update && apt-get install -y ffmpeg sox libsndfile1 curl && rm -rf /var/lib/apt/lists/*
 
 # Python deps
 # Pin ruamel.yaml to avoid 'max_depth' AttributeError with speechbrain/hyperpyyaml
@@ -128,6 +134,15 @@ WORKDIR /app
 # Copy modular architecture (includes server.py and banner.py)
 COPY blitz/ /app/blitz/
 COPY scripts/ /app/scripts/
+
+# Security: run as a non-root user (CKV_DOCKER_3)
+RUN groupadd -r blitz && useradd -r -g blitz -d /app -s /sbin/nologin blitz \
+    && chown -R blitz:blitz /app
+USER blitz
+
+# Liveness check (CKV_DOCKER_2): probe the API health endpoint.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=180s --retries=3 \
+    CMD curl -fsS http://localhost:8000/health || exit 1
 
 # Use integrated server with modular architecture
 CMD ["uvicorn", "blitz.server:app", "--host", "0.0.0.0", "--port", "8000"]

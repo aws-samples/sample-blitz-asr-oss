@@ -69,6 +69,38 @@ Parameters:
 Resources:
 
   # --------------------------------------------------------------------------
+  # KMS CMK - encrypts the CloudWatch log group
+  # --------------------------------------------------------------------------
+  EncryptionKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: !Sub 'Blitz ASR batch CMK (logs) - ${Environment}'
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: EnableRootAccountAdmin
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+          - Sid: AllowCloudWatchLogs
+            Effect: Allow
+            Principal:
+              Service: !Sub 'logs.${AWS::Region}.amazonaws.com'
+            Action:
+              - kms:Encrypt
+              - kms:Decrypt
+              - kms:ReEncrypt*
+              - kms:GenerateDataKey*
+              - kms:Describe*
+            Resource: '*'
+            Condition:
+              ArnLike:
+                'kms:EncryptionContext:aws:logs:arn': !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/batch/blitz-${Environment}'
+
+  # --------------------------------------------------------------------------
   # S3 Buckets
   # --------------------------------------------------------------------------
   AccessLogBucket:
@@ -83,10 +115,16 @@ Resources:
       OwnershipControls:
         Rules:
           - ObjectOwnership: ObjectWriter
+      VersioningConfiguration:
+        Status: Enabled
       BucketEncryption:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: AES256
+      # Self-logging: the access-log bucket records its own access under a
+      # dedicated prefix (CKV_AWS_18).
+      LoggingConfiguration:
+        LogFilePrefix: access-log-bucket/
       LifecycleConfiguration:
         Rules:
           - Id: ArchiveThenExpireAccessLogs
@@ -112,6 +150,8 @@ Resources:
         BlockPublicPolicy: true
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
       BucketEncryption:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
@@ -137,6 +177,8 @@ Resources:
         BlockPublicPolicy: true
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
       BucketEncryption:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
@@ -234,6 +276,14 @@ Resources:
   # --------------------------------------------------------------------------
   BatchServiceRole:
     Type: AWS::IAM::Role
+    Metadata:
+      cdk_nag:
+        rules_to_suppress:
+          - id: AwsSolutions-IAM4
+            reason: >-
+              AWS Batch requires its AWS-managed service-role policy
+              (AWSBatchServiceRole). This is the AWS-recommended role for the
+              Batch service and cannot be replaced with a narrower inline policy.
     Properties:
       RoleName: !Sub 'blitz-batch-service-role-${Environment}'
       AssumeRolePolicyDocument:
@@ -248,6 +298,15 @@ Resources:
 
   BatchInstanceRole:
     Type: AWS::IAM::Role
+    Metadata:
+      cdk_nag:
+        rules_to_suppress:
+          - id: AwsSolutions-IAM4
+            reason: >-
+              ECS-on-EC2 container instances require the AWS-managed
+              AmazonEC2ContainerServiceforEC2Role, and SSM Session Manager
+              access (no inbound SSH) requires AmazonSSMManagedInstanceCore.
+              Both are AWS-recommended managed policies for these roles.
     Properties:
       RoleName: !Sub 'blitz-batch-instance-role-${Environment}'
       AssumeRolePolicyDocument:
@@ -270,6 +329,16 @@ Resources:
 
   BatchJobRole:
     Type: AWS::IAM::Role
+    Metadata:
+      cdk_nag:
+        rules_to_suppress:
+          - id: AwsSolutions-IAM5
+            reason: >-
+              Deferred (see docs/security-exceptions.md). Object-level S3 access
+              requires an object-path wildcard (arn:.../*); it is already scoped
+              to the specific blitz input/output buckets, and actions are limited
+              to Get/Put/List. This is least-privilege for a job that processes
+              arbitrary object keys within those buckets.
     Properties:
       RoleName: !Sub 'blitz-batch-job-role-${Environment}'
       AssumeRolePolicyDocument:
@@ -314,6 +383,18 @@ Resources:
 
   BatchExecutionRole:
     Type: AWS::IAM::Role
+    Metadata:
+      cdk_nag:
+        rules_to_suppress:
+          - id: AwsSolutions-IAM4
+            reason: >-
+              ECS task execution requires the AWS-managed
+              AmazonECSTaskExecutionRolePolicy to pull images and write logs.
+          - id: AwsSolutions-IAM5
+            reason: >-
+              ecr:GetAuthorizationToken does not support resource-level
+              permissions and must use Resource '*' per AWS documentation. All
+              other ECR actions are scoped to the blitz-* repositories.
     Properties:
       RoleName: !Sub 'blitz-batch-execution-role-${Environment}'
       AssumeRolePolicyDocument:
@@ -389,6 +470,7 @@ Resources:
     Properties:
       LogGroupName: !Sub '/aws/batch/blitz-${Environment}'
       RetentionInDays: 30
+      KmsKeyId: !GetAtt EncryptionKey.Arn
 
   # --------------------------------------------------------------------------
   # Launch Template for GPU instances with 100GB disk

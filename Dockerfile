@@ -266,5 +266,10 @@ RUN groupadd -r blitz && useradd -r -g blitz -d /app -s /sbin/nologin blitz \
     && chown -R blitz:blitz /app
 USER blitz
 
+# Liveness check (CKV_DOCKER_2): probe the API health endpoint. Uses Python's
+# stdlib to avoid depending on curl being present in the image.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=180s --retries=3 \
+    CMD ["python3", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health', timeout=4).status==200 else 1)"]
+
 # Use integrated server with modular architecture
 CMD ["uvicorn", "blitz.server:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -76,6 +76,9 @@ whisper-diarization-backup.tar.gz
 
 appsec-reports/
 
+# ASH security scanner output
+.ash/
+
 # Copyrighted content (not for distribution)
 tests/fixtures/podcasts/
 tests/fixtures/benchmark-transcripts/jony-ive-youtube-gold-standard.md

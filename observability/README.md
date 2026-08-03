@@ -54,15 +54,18 @@ METRICS.audio_minutes_processed.labels(engine=engine).inc(duration_sec / 60.0)
 ### 4. Deploy monitoring stack (optional)
 
 ```bash
+# Grafana admin password is required (stack won't start without it)
+export GRAFANA_ADMIN_PASSWORD="$(python3 -c 'import secrets; print(secrets.token_urlsafe(24))')"
+
 # Start Prometheus + Grafana alongside Blitz
 docker compose -f docker-compose.yml \
   -f observability/docker-compose.observability.yml up -d
 
-# Access:
+# Access (Grafana and Prometheus bind to localhost only):
 # - Blitz API:    http://localhost:8000
 # - Metrics:      http://localhost:8000/metrics
 # - Prometheus:   http://localhost:9090
-# - Grafana:      http://localhost:3000 (admin/admin)
+# - Grafana:      http://localhost:3000 (user: admin, or $GRAFANA_ADMIN_USER)
 ```
 
 ## What's Measured

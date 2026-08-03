@@ -248,11 +248,18 @@ Every response includes:
 
 ### Monitoring Stack (Optional)
 
-Deploy Prometheus + Grafana alongside Blitz:
+Deploy Prometheus + Grafana alongside Blitz. A Grafana admin password is
+required (the stack refuses to start without it):
 ```bash
+# Generate a password and export it (or add it to .env)
+export GRAFANA_ADMIN_PASSWORD="$(python3 -c 'import secrets; print(secrets.token_urlsafe(24))')"
+
 docker compose -f docker-compose.yml \
   -f observability/docker-compose.observability.yml up -d
 ```
+
+Grafana and Prometheus bind to `127.0.0.1` only (localhost). Access Grafana at
+http://localhost:3000 (user `admin`, or override with `GRAFANA_ADMIN_USER`).
 
 See [observability/README.md](observability/README.md) for full documentation.
 
