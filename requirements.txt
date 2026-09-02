@@ -9,7 +9,7 @@ torch>=2.0.0,<3.0.0
 torchaudio>=2.0.0,<3.0.0
 
 # ASR Models
-transformers>=4.35.0,<5.0.0
+transformers>=5.10.1,<6.0.0
 nemo_toolkit[asr]>=2.0.0,<3.0.0
 speechbrain>=1.0.0,<2.0.0
 

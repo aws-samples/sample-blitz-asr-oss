@@ -355,7 +355,7 @@ tornado==6.4.2
 tqdm==4.67.1
 traitlets==5.14.3
 transformer_engine @ git+https://github.com/NVIDIA/TransformerEngine.git@ccd7a0c97402f280c8694688c401587dc1601c8d
-transformers==4.51.3
+transformers==5.10.1
 treelite @ file:///rapids/treelite-4.3.0-py3-none-linux_x86_64.whl#sha256=fcb1f67e31ed6a5d3084a2e7e25a7baa5212698204a0165ef738bb4541dae596
 triton==3.2.0
 typeguard==4.5.2
