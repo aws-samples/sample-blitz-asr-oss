@@ -188,7 +188,7 @@ nemo-toolkit==2.4.0
 nest-asyncio==1.6.0
 networkx==3.4.2
 ninja==1.11.1.2
-nltk==3.9.4
+nltk==3.10.3
 notebook==7.3.1
 notebook_shim==0.2.4
 num2words==0.5.14
