@@ -7,7 +7,7 @@ alembic==1.18.4
 annotated-doc==0.0.4
 annotated-types==0.7.0
 antlr4-python3-runtime==4.9.3
-anyio==4.7.0
+anyio==4.14.2
 apex @ file:///opt/pytorch/apex/dist/apex-0.1-cp312-cp312-linux_x86_64.whl#sha256=15d8f92d0e40b9aa935b0d9c6c48caee9b1ad017aee30cb344209bfa3ce5839e
 argon2-cffi==23.1.0
 argon2-cffi-bindings==21.2.0
