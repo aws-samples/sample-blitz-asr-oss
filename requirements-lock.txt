@@ -150,7 +150,7 @@ libkvikio @ file:///rapids/libkvikio-24.10.0-py3-none-linux_x86_64.whl#sha256=0f
 librmm @ file:///rapids/librmm-24.10.0-py3-none-linux_x86_64.whl#sha256=3831f97517885dea0c6cff03d2b7f81f159a642196dd17c03feb6561412c0f80
 librosa==0.10.1
 libucxx @ file:///rapids/libucxx-0.40.0-py3-none-linux_x86_64.whl#sha256=08fd83b9cdc3640c561e16f1fe65b0249bf06b64b6aa67571456a44b12a1d8c4
-lightning==2.4.0
+lightning==2.6.6
 lightning-thunder==0.2.0.dev0
 lightning-utilities==0.15.3
 lintrunner==0.12.7
