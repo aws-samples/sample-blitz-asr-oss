@@ -351,7 +351,7 @@ torchaudio==2.6.0+cu124
 torchcodec==0.14.0
 torchmetrics==1.9.0
 torchprofile==0.0.4
-tornado==6.4.2
+tornado==6.5.9
 tqdm==4.67.1
 traitlets==5.14.3
 transformer_engine @ git+https://github.com/NVIDIA/TransformerEngine.git@ccd7a0c97402f280c8694688c401587dc1601c8d
