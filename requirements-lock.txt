@@ -182,7 +182,7 @@ multiprocess==0.70.19
 murmurhash==1.0.11
 mypy-extensions==1.0.0
 nbclient==0.10.1
-nbconvert==7.16.4
+nbconvert==7.17.2
 nbformat==5.10.4
 nemo-toolkit==2.4.0
 nest-asyncio==1.6.0
