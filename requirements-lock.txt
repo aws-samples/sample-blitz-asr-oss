@@ -308,7 +308,7 @@ scipy @ file:///rapids/scipy-1.14.1-cp312-cp312-manylinux_2_17_x86_64.manylinux2
 Send2Trash==1.8.3
 sentencepiece==0.2.1
 sentry-sdk==2.61.1
-setuptools==70.3.0
+setuptools==84.1.0
 shellingham==1.5.4
 six @ file:///rapids/six-1.17.0-py2.py3-none-any.whl#sha256=4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274
 smart-open==7.0.5
