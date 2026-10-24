@@ -169,7 +169,7 @@ matplotlib-inline==0.1.7
 mdit-py-plugins==0.4.2
 mdurl==0.1.2
 mediapy==1.1.6
-mistune==3.0.2
+mistune==3.3.3
 mkl==2021.1.1
 mkl-devel==2021.1.1
 mkl-include==2021.1.1
